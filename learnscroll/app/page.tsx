@@ -13,7 +13,7 @@ import {
 } from "@/lib/instant-slop";
 import { topicAllowedForGrade, topicsForGrade } from "@/lib/grade-topics";
 import { preloadVoices, stopCharacterSpeech } from "@/lib/character-voice";
-import { readFeedMuted, writeFeedMuted, readSavedGrade, writeSavedGrade, unlockFeedSpeech, onFeedSpeechUnlock } from "@/lib/feed-audio";
+import { readFeedMuted, writeFeedMuted, readSavedGrade, writeSavedGrade } from "@/lib/feed-audio";
 import {
   fetchPortraitForItem,
   getCachedPortrait,
@@ -55,14 +55,6 @@ export default function FeedPage() {
     preloadVoices();
     setSavedIds(getSavedIds());
     setMuted(readFeedMuted());
-
-    const unlock = () => unlockFeedSpeech();
-    document.addEventListener("pointerdown", unlock, { once: true, capture: true });
-    document.addEventListener("keydown", unlock, { once: true, capture: true });
-    return () => {
-      document.removeEventListener("pointerdown", unlock, { capture: true });
-      document.removeEventListener("keydown", unlock, { capture: true });
-    };
   }, []);
 
   function handleGradeChange(grade: GradeLevel) {
@@ -76,7 +68,9 @@ export default function FeedPage() {
     setMuted((prev) => {
       const next = !prev;
       writeFeedMuted(next);
-      if (next) stopCharacterSpeech();
+      if (next) {
+        stopCharacterSpeech();
+      }
       return next;
     });
   }
@@ -255,7 +249,7 @@ export default function FeedPage() {
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30">
         <div className="pointer-events-auto flex items-start justify-between gap-2 px-4 pt-4">
           <p className="text-[15px] font-semibold tracking-tight text-white drop-shadow-md">
-            LearnScroll
+            Luminary
           </p>
           <GradeSelector
             value={gradeLevel}

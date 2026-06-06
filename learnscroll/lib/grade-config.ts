@@ -144,7 +144,8 @@ export function adaptTemplateForGrade(
   topic: Topic
 ): SlopTemplate {
   const topicLabel = TOPIC_LABELS[topic].toLowerCase();
-  let { title, transcript, qualityScore } = template;
+  let { title, transcript } = template;
+  const { qualityScore } = template;
 
   if (gradeLevel === "K-5") {
     transcript = shortenSentences(transcript, 3);

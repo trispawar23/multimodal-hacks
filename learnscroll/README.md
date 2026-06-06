@@ -1,8 +1,8 @@
-# LearnScroll
+# Luminary
 
 Multimodal educational infinite-scroll app — Gemini-powered voice assistant, AI historical figure characters, adaptive quizzes, and AI-compiled study books.
 
-**Problem:** TikTok and Instagram contain real, high-quality educational content buried under AI slop. LearnScroll surfaces only verified educational content, verified by Gemini.
+**Problem:** TikTok and Instagram contain real, high-quality educational content buried under AI slop. Luminary surfaces only verified educational content, verified by Gemini.
 
 ## Quick Start
 

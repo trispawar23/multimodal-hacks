@@ -4,7 +4,7 @@ import { MOCK_SAVED, FEED_ITEMS, MOCK_BOOKS } from "@/lib/mock-data";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, bookId, format = "pdf" } = await req.json() as {
+    const { bookId, format = "pdf" } = await req.json() as {
       userId: string;
       bookId: string;
       format: "pdf" | "epub";

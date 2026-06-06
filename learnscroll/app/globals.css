@@ -49,6 +49,28 @@ body {
   40%, 60% { opacity: 0.25; transform: scaleY(1); }
 }
 
+@keyframes mouthAperture {
+  0%, 100% {
+    transform: scaleX(0.72) scaleY(0.44);
+    opacity: 0.58;
+    filter: blur(0.2px);
+  }
+  38% {
+    transform: scaleX(1.06) scaleY(1);
+    opacity: 0.95;
+    filter: blur(0);
+  }
+  62% {
+    transform: scaleX(0.9) scaleY(0.7);
+    opacity: 0.78;
+  }
+}
+
+@keyframes mouthSignal {
+  0%, 100% { transform: scaleY(0.35); opacity: 0.45; }
+  45% { transform: scaleY(1); opacity: 0.95; }
+}
+
 .talking-portrait-active {
   animation: portraitTalk 5s ease-in-out infinite;
 }
@@ -56,3 +78,38 @@ body {
 .talking-mouth-glow {
   animation: mouthGlow 0.45s ease-in-out infinite;
 }
+
+.talking-mouth-aperture {
+  position: relative;
+  display: flex;
+  height: 18px;
+  width: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.78), rgba(168, 200, 255, 0.42) 48%, rgba(74, 68, 88, 0.1) 78%),
+    rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 0.55),
+    0 0 22px rgba(168, 200, 255, 0.42);
+  animation: mouthAperture 0.42s ease-in-out infinite;
+}
+
+.talking-mouth-aperture span {
+  display: block;
+  height: 12px;
+  width: 2px;
+  transform-origin: center;
+  border-radius: 999px;
+  background: rgba(74, 68, 88, 0.72);
+  animation: mouthSignal 0.48s ease-in-out infinite;
+}
+
+.talking-mouth-aperture span:nth-child(2) { animation-delay: 0.06s; }
+.talking-mouth-aperture span:nth-child(3) { animation-delay: 0.12s; }
+.talking-mouth-aperture span:nth-child(4) { animation-delay: 0.18s; }
+.talking-mouth-aperture span:nth-child(5) { animation-delay: 0.24s; }

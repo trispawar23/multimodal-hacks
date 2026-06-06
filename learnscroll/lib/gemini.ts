@@ -1,5 +1,5 @@
 /**
- * Gemini API utilities for LearnScroll.
+ * Gemini API utilities for Luminary.
  *
  * Uses gemini-2.5-flash for fast operations (feed scoring, quiz gen, slop)
  *
@@ -14,8 +14,8 @@ import {
 } from "@google/generative-ai";
 import { CHARACTERS } from "./mock-data";
 import type { QuizQuestion, ContentItem, GradeLevel, Topic } from "./types";
-import { getIllustratedAssets, pickCharacterForTopic, buildPortraitPrompt } from "./slop-config";
-import { getPersonality, pickPersonality, type Personality } from "./personalities";
+import { pickCharacterForTopic, buildPortraitPrompt } from "./slop-config";
+import { getPersonality, type Personality } from "./personalities";
 
 function getClient() {
   const apiKey = process.env.GEMINI_API_KEY ?? "";
@@ -209,12 +209,14 @@ You may answer questions about:
 - Deeper or simpler explanations of what you taught
 
 RULES:
-1. Answer in 2–4 concise sentences — mobile-friendly, conversational.
+1. Answer as spoken audio, not written text. No markdown, no bullets, no labels.
+2. Answer in 2–4 concise sentences — mobile-friendly, conversational.
 2. For life and biography questions, share details ${characterName} would plausibly know about themselves.
 3. Never claim knowledge of events after ${era.split("–").pop()?.replace(/[^0-9]/g, "") ? "your era ended" : "your death"} unless clarifying you speak as an AI character looking back.
 4. If a question is outside your expertise, say so briefly and redirect to what you do know.
 5. Prioritize accuracy — if persona would require a false claim, say "As an AI character: [correct answer]."
-6. You are an AI educational character of ${characterName}. Confirm if asked directly.`;
+6. Sound like a real tutor in conversation: acknowledge the student's question, answer directly, then optionally ask one short follow-up.
+7. You are an AI educational character of ${characterName}. Confirm if asked directly.`;
 }
 
 export interface VoiceTurn {
@@ -255,7 +257,10 @@ export async function generateCharacterReply(
   }));
 
   const chat = model.startChat({ history: chatHistory });
-  const result = await chat.sendMessage(question);
+  const result = await chat.sendMessage([
+    `The student spoke this question through a microphone: "${question}"`,
+    "Reply for natural voice playback. Keep it concise and conversational.",
+  ].join("\n\n"));
   return result.response.text().trim();
 }
 
@@ -334,7 +339,7 @@ export async function generatePersonalitySlop(
   });
 
   const prompt = `
-You write short-form educational "reel" scripts for LearnScroll — TikTok-style teaching from AI personality characters.
+You write short-form educational "reel" scripts for Luminary — TikTok-style teaching from AI personality characters.
 
 TOPIC: ${topic}
 GRADE LEVEL: ${gradeLevel}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContentItem } from "@/lib/types";
 import { speakAsCharacter, stopCharacterSpeech } from "@/lib/character-voice";
 import { readFeedMuted } from "@/lib/feed-audio";
+import { playGeminiVoice, stopGeminiVoice } from "@/lib/gemini-voice-client";
 import { isSpeechInputSupported, listenForSpeech } from "@/lib/speech-input";
 import { cn } from "./ui/cn";
 
@@ -20,7 +21,6 @@ interface Message {
 const WAVE_HEIGHTS = [10, 20, 28, 24, 32, 18, 26, 22, 14, 30, 20, 12, 24];
 
 function suggestedQuestions(content: ContentItem): string[] {
-  const first = content.character.name.split(" ")[0];
   const topic = content.topics[0] ?? "this subject";
   return [
     "Explain this more simply",
@@ -59,11 +59,14 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
     setInterimText("");
 
     if (!readFeedMuted()) {
-      speakAsCharacter(greeting, character, { force: true });
+      void playGeminiVoice(greeting, character, {
+        fallback: () => speakAsCharacter(greeting, character, { force: true }),
+      });
     }
 
     return () => {
       stopListenRef.current?.();
+      stopGeminiVoice();
       stopCharacterSpeech();
     };
   }, [content]);
@@ -78,6 +81,7 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
       const prior = messagesRef.current;
       setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
       setIsThinking(true);
+      stopGeminiVoice();
       stopCharacterSpeech();
 
       try {
@@ -101,15 +105,13 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
           "My apologies — I lost my train of thought. Could you ask again?";
 
         setMessages((prev) => [...prev, { role: "character", text: answer }]);
-        speakAsCharacter(answer, char, { force: true });
+        await playGeminiVoice(answer, char, {
+          fallback: () => speakAsCharacter(answer, char, { force: true }),
+        });
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "character",
-            text: "The connection faltered. Please try your question once more.",
-          },
-        ]);
+        const answer = "The connection faltered. Please try your question once more.";
+        setMessages((prev) => [...prev, { role: "character", text: answer }]);
+        speakAsCharacter(answer, char, { force: true });
       } finally {
         setIsThinking(false);
       }

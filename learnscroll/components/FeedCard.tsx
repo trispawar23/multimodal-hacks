@@ -54,6 +54,14 @@ export function FeedCard({ item, onSave, onVoice }: FeedCardProps) {
     onSave(item.id);
   }
 
+  function rememberForQuiz() {
+    try {
+      window.sessionStorage.setItem(`learnscroll:content:${item.id}`, JSON.stringify(item));
+    } catch {
+      // Quiz has mock fallbacks if session storage is unavailable.
+    }
+  }
+
   return (
     <div className="relative rounded-2xl overflow-hidden border border-[#2a2a38] bg-[#16161c] flex flex-col">
       {/* Thumbnail area */}
@@ -117,6 +125,7 @@ export function FeedCard({ item, onSave, onVoice }: FeedCardProps) {
 
         <Link
           href={`/quiz?contentId=${item.id}`}
+          onClick={rememberForQuiz}
           className="flex-1 py-2.5 rounded-xl text-[13px] font-medium border border-[#2a2a38] text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-all text-center"
         >
           Quiz Me

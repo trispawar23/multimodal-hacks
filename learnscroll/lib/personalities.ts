@@ -166,8 +166,6 @@ const TOPIC_PERSONALITY_IDS: Record<Topic, string[]> = {
   engineering: ["tesla", "turing"],
 };
 
-let pickCounter = 0;
-
 export function pickPersonality(topic: Topic, gradeLevel: GradeLevel): Personality {
   const gradePool = PERSONALITIES_BY_GRADE[gradeLevel]?.[topic];
   const ids =
@@ -177,7 +175,6 @@ export function pickPersonality(topic: Topic, gradeLevel: GradeLevel): Personali
     ["einstein"];
 
   const id = ids[Math.floor(Math.random() * ids.length)];
-  pickCounter += 1;
   return PERSONALITIES.find((p) => p.id === id) ?? PERSONALITIES[0];
 }
 

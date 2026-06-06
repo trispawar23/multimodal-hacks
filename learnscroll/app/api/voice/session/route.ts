@@ -5,7 +5,12 @@ import type { GradeLevel, Topic } from "@/lib/types";
 
 export const maxDuration = 30;
 
+function voiceSessionLog(event: string, details: Record<string, unknown> = {}) {
+  console.log(`[Luminary:Voice:Session] ${event}`, JSON.stringify(details, null, 2));
+}
+
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   try {
     const body = (await req.json()) as {
       characterId: string;
@@ -29,7 +34,21 @@ export async function POST(req: NextRequest) {
     const topics = body.topics ?? personality.subjects;
     const history = body.history ?? [];
 
+    voiceSessionLog("request.start", {
+      characterId,
+      questionLength: question.length,
+      title,
+      transcriptLength: transcript.length,
+      gradeLevel,
+      topics,
+      historyTurns: history.length,
+    });
+
     if (!process.env.GEMINI_API_KEY) {
+      voiceSessionLog("request.fallback.no_api_key", {
+        characterId,
+        totalMs: Date.now() - startedAt,
+      });
       return NextResponse.json({
         answer: `${personality.name} here. "${question}" — a fine question! From what we covered in "${title}", the heart of it is: ${transcript.split(".")[0] || "keep exploring and stay curious"}. Ask me about my life or this subject anytime.`,
         characterId,
@@ -38,12 +57,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const geminiStartedAt = Date.now();
     const answer = await generateCharacterReply(
       characterId,
       question.trim(),
       { title, transcript, gradeLevel, topics },
       history
     );
+    const geminiFinishedAt = Date.now();
+
+    voiceSessionLog("request.success", {
+      characterId,
+      answerLength: answer.length,
+      geminiMs: geminiFinishedAt - geminiStartedAt,
+      totalMs: geminiFinishedAt - startedAt,
+    });
 
     return NextResponse.json({
       answer,
@@ -54,6 +82,10 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Voice session error:", error);
     const message = error instanceof Error ? error.message : "Voice session failed";
+    voiceSessionLog("request.error", {
+      totalMs: Date.now() - startedAt,
+      error: message,
+    });
     return NextResponse.json({ error: message, fallback: true }, { status: 500 });
   }
 }

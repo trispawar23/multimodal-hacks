@@ -3,7 +3,7 @@ import { scoreContentQuality } from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
-    const { url, transcript, metadata } = await req.json() as {
+    const { transcript, metadata } = await req.json() as {
       url: string;
       transcript: string;
       metadata: { title: string; platform: string };

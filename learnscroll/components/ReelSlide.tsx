@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ContentItem, PortraitStyle } from "@/lib/types";
 import { topicPastels } from "@/lib/tokens";
-import { onFeedSpeechUnlock } from "@/lib/feed-audio";
+import { playGeminiVoice, stopGeminiVoice } from "@/lib/gemini-voice-client";
 import { speakAsCharacter, stopCharacterSpeech } from "@/lib/character-voice";
 import { isSpeechInputSupported, startHoldToSpeak, type HoldToSpeakSession } from "@/lib/speech-input";
 import { PortraitLoadingOverlay } from "./PortraitLoadingOverlay";
@@ -22,6 +22,10 @@ interface ReelSlideProps {
 
 type TalkPhase = "idle" | "listening" | "thinking" | "answering";
 
+function voiceTimingLog(event: string, details: Record<string, unknown> = {}) {
+  console.log(`[Luminary:Voice] ${event}`, JSON.stringify(details, null, 2));
+}
+
 const PORTRAIT_FOCUS: Record<PortraitStyle, string> = {
   illustration: "object-[center_28%]",
   "3d": "object-center",
@@ -34,6 +38,12 @@ const REEL_SHADOW = {
   meta: "[text-shadow:0_1px_4px_rgba(0,0,0,0.5)]",
   label: "[text-shadow:0_1px_3px_rgba(0,0,0,0.55)]",
 } as const;
+
+const MOUTH_POSITION: Record<PortraitStyle, string> = {
+  illustration: "top-[38%]",
+  "3d": "top-[45%]",
+  realistic: "top-[40%]",
+};
 
 function ActionButton({
   label,
@@ -73,12 +83,12 @@ function ActionButton({
 
 function HoldToTalkButton({
   item,
+  muted,
   onPhaseChange,
-  onAnswer,
 }: {
   item: ContentItem;
+  muted?: boolean;
   onPhaseChange: (phase: TalkPhase) => void;
-  onAnswer: (text: string) => void;
 }) {
   const [phase, setPhase] = useState<TalkPhase>("idle");
   const [interim, setInterim] = useState("");
@@ -95,6 +105,7 @@ function HoldToTalkButton({
   async function releaseHold() {
     if (!holdingRef.current) return;
     holdingRef.current = false;
+    const releaseAt = performance.now();
 
     const session = sessionRef.current;
     sessionRef.current = null;
@@ -105,18 +116,32 @@ function HoldToTalkButton({
     }
 
     const question = await session.stop();
+    const transcriptAt = performance.now();
     setInterim("");
 
     if (!question.trim()) {
+      voiceTimingLog("inline.no_transcript", {
+        contentId: item.id,
+        speechRecognitionMs: Math.round(transcriptAt - releaseAt),
+      });
       setTalkPhase("idle");
       return;
     }
 
     setTalkPhase("thinking");
+    stopGeminiVoice();
     stopCharacterSpeech();
 
     try {
       const prior = historyRef.current;
+      voiceTimingLog("inline.question.ready", {
+        contentId: item.id,
+        characterId: item.character.id,
+        questionLength: question.trim().length,
+        historyTurns: prior.length,
+        speechRecognitionMs: Math.round(transcriptAt - releaseAt),
+      });
+      const sessionRequestAt = performance.now();
       const res = await fetch("/api/voice/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,7 +155,9 @@ function HoldToTalkButton({
           history: prior,
         }),
       });
+      const sessionResponseAt = performance.now();
       const data = (await res.json()) as { answer?: string };
+      const sessionParsedAt = performance.now();
       const answer =
         data.answer ?? "I lost my train of thought — try asking again.";
 
@@ -140,14 +167,40 @@ function HoldToTalkButton({
         { role: "character" as const, text: answer },
       ].slice(-10);
 
-      onAnswer(answer);
+      if (muted) {
+        voiceTimingLog("inline.answer.muted", {
+          contentId: item.id,
+          answerLength: answer.length,
+          totalAfterReleaseMs: Math.round(performance.now() - releaseAt),
+        });
+        setTalkPhase("idle");
+        return;
+      }
+
       setTalkPhase("answering");
-      speakAsCharacter(answer, item.character, {
-        force: true,
+      const ttsStartAt = performance.now();
+      await playGeminiVoice(answer, item.character, {
         onEnd: () => setTalkPhase("idle"),
+        fallback: () =>
+          speakAsCharacter(answer, item.character, {
+            force: true,
+            onEnd: () => setTalkPhase("idle"),
+          }),
+      });
+      const ttsReadyAt = performance.now();
+      voiceTimingLog("inline.answer.playback_started", {
+        contentId: item.id,
+        answerLength: answer.length,
+        voiceSessionMs: Math.round(sessionResponseAt - sessionRequestAt),
+        responseParseMs: Math.round(sessionParsedAt - sessionResponseAt),
+        ttsFetchAndStartMs: Math.round(ttsReadyAt - ttsStartAt),
+        totalAfterReleaseMs: Math.round(ttsReadyAt - releaseAt),
       });
     } catch {
-      onAnswer("Connection lost — hold to ask again.");
+      voiceTimingLog("inline.error", {
+        contentId: item.id,
+        totalAfterReleaseMs: Math.round(performance.now() - releaseAt),
+      });
       setTalkPhase("idle");
     }
   }
@@ -157,6 +210,7 @@ function HoldToTalkButton({
     e.preventDefault();
     holdingRef.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
+    stopGeminiVoice();
     stopCharacterSpeech();
     sessionRef.current?.cancel();
     setInterim("");
@@ -273,26 +327,19 @@ function PersonalityMedia({
   item,
   containerRef,
   priority,
-  muted,
-  suppressAutoSpeech,
   externalSpeaking,
   onVisibilityChange,
 }: {
   item: ContentItem;
   containerRef: React.RefObject<HTMLElement | null>;
   priority?: boolean;
-  muted?: boolean;
-  suppressAutoSpeech?: boolean;
   externalSpeaking?: boolean;
   onVisibilityChange?: (id: string, visible: boolean) => void;
 }) {
   const [isInView, setIsInView] = useState(!!priority);
   const [baseReady, setBaseReady] = useState(false);
   const [aiReady, setAiReady] = useState(false);
-  const [autoSpeaking, setAutoSpeaking] = useState(false);
-  const autoPlayedRef = useRef<string | null>(null);
-  const autoTimerRef = useRef<number | null>(null);
-  const isSpeaking = autoSpeaking || !!externalSpeaking;
+  const isSpeaking = !!externalSpeaking;
   const style = item.portraitStyle ?? "illustration";
   const focus = PORTRAIT_FOCUS[style];
   const eager = priority || isInView;
@@ -316,10 +363,6 @@ function PersonalityMedia({
   }, [item.aiPosterUrl]);
 
   useEffect(() => {
-    autoPlayedRef.current = null;
-  }, [item.id]);
-
-  useEffect(() => {
     const section = containerRef.current;
     if (!section) return;
 
@@ -339,69 +382,6 @@ function PersonalityMedia({
       onVisibilityChange?.(item.id, false);
     };
   }, [containerRef, item.id, onVisibilityChange, priority]);
-
-  const playAutoSpeech = useCallback(() => {
-    if (muted || suppressAutoSpeech || !isInView) return;
-    if (autoPlayedRef.current === item.id) return;
-
-    stopCharacterSpeech();
-    speakAsCharacter(item.transcript, item.character, {
-      muted,
-      onStart: () => {
-        autoPlayedRef.current = item.id;
-        setAutoSpeaking(true);
-      },
-      onEnd: () => setAutoSpeaking(false),
-      onError: () => setAutoSpeaking(false),
-    });
-  }, [
-    muted,
-    suppressAutoSpeech,
-    isInView,
-    item.id,
-    item.transcript,
-    item.character,
-  ]);
-
-  useEffect(() => {
-    if (autoTimerRef.current) {
-      window.clearTimeout(autoTimerRef.current);
-      autoTimerRef.current = null;
-    }
-
-    if (muted || suppressAutoSpeech) {
-      setAutoSpeaking(false);
-      return;
-    }
-
-    if (!isInView) {
-      autoPlayedRef.current = null;
-      setAutoSpeaking(false);
-      return;
-    }
-
-    if (autoPlayedRef.current === item.id) return;
-
-    autoTimerRef.current = window.setTimeout(() => {
-      autoTimerRef.current = null;
-      playAutoSpeech();
-    }, 200);
-
-    return () => {
-      if (autoTimerRef.current) {
-        window.clearTimeout(autoTimerRef.current);
-        autoTimerRef.current = null;
-      }
-    };
-  }, [isInView, muted, suppressAutoSpeech, item.id, playAutoSpeech]);
-
-  useEffect(() => {
-    return onFeedSpeechUnlock(() => {
-      if (isInView && autoPlayedRef.current !== item.id) {
-        playAutoSpeech();
-      }
-    });
-  }, [isInView, item.id, playAutoSpeech]);
 
   return (
     <>
@@ -441,10 +421,20 @@ function PersonalityMedia({
         {showMouthGlow && (
           <div
             className={cn(
-              "pointer-events-none absolute left-1/2 h-7 w-12 -translate-x-1/2 rounded-full bg-white/30 blur-md talking-mouth-glow",
-              style === "illustration" ? "top-[38%]" : style === "3d" ? "top-[45%]" : "top-[40%]"
+              "pointer-events-none absolute left-1/2 z-20 -translate-x-1/2",
+              MOUTH_POSITION[style]
             )}
-          />
+            aria-hidden
+          >
+            <div className="talking-mouth-glow absolute left-1/2 top-1/2 h-8 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/25 blur-md" />
+            <div className="talking-mouth-aperture">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
         )}
       </div>
 
@@ -480,14 +470,12 @@ export function ReelSlide({
   const sectionRef = useRef<HTMLElement>(null);
   const [captionOpen, setCaptionOpen] = useState(false);
   const [talkPhase, setTalkPhase] = useState<TalkPhase>("idle");
-  const [liveAnswer, setLiveAnswer] = useState("");
 
   useEffect(() => {
-    setLiveAnswer("");
+    stopCharacterSpeech();
+    stopGeminiVoice();
     setTalkPhase("idle");
   }, [item.id]);
-
-  const suppressAutoSpeech = talkPhase !== "idle";
 
   return (
     <section
@@ -498,9 +486,7 @@ export function ReelSlide({
         item={item}
         containerRef={sectionRef}
         priority={priority}
-        muted={muted}
-        suppressAutoSpeech={suppressAutoSpeech}
-        externalSpeaking={talkPhase === "listening" || talkPhase === "answering"}
+        externalSpeaking={!muted && (talkPhase === "listening" || talkPhase === "answering")}
         onVisibilityChange={onVisibilityChange}
       />
 
@@ -513,12 +499,15 @@ export function ReelSlide({
         </span>
       </div>
 
-      {liveAnswer && (
-        <div className="absolute bottom-[9.5rem] left-3 right-[3.75rem] z-10 rounded-2xl bg-black/45 px-3 py-2 backdrop-blur-sm">
-          <p className="mb-0.5 text-[9px] font-semibold text-white/70">
-            {item.character.name}
+      {talkPhase !== "idle" && (
+        <div className="absolute bottom-[9.75rem] left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1.5 backdrop-blur-sm">
+          <p className="text-[11px] font-semibold text-white">
+            {talkPhase === "listening"
+              ? "Listening..."
+              : talkPhase === "thinking"
+                ? `${item.character.name.split(" ")[0]} is thinking...`
+                : `${item.character.name.split(" ")[0]} is speaking...`}
           </p>
-          <p className="line-clamp-3 text-[12px] leading-snug text-white">{liveAnswer}</p>
         </div>
       )}
 
@@ -625,8 +614,8 @@ export function ReelSlide({
 
         <HoldToTalkButton
           item={item}
+          muted={muted}
           onPhaseChange={setTalkPhase}
-          onAnswer={setLiveAnswer}
         />
       </div>
     </section>
