@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { ContentItem, PortraitStyle } from "@/lib/types";
+import type { ContentItem } from "@/lib/types";
 import { topicPastels } from "@/lib/tokens";
 import { speakAsCharacter, stopCharacterSpeech } from "@/lib/character-voice";
+import { CharacterSvgAvatar } from "./CharacterSvgAvatar";
 import { cn } from "./ui/cn";
 
 interface ReelSlideProps {
@@ -21,12 +22,6 @@ const GRADE_LABELS: Record<string, string> = {
   "9-12": "9–12",
   college: "College",
   graduate: "Grad",
-};
-
-const PORTRAIT_FOCUS: Record<PortraitStyle, string> = {
-  illustration: "object-[center_28%]",
-  "3d": "object-center",
-  realistic: "object-[center_12%]",
 };
 
 function ActionButton({
@@ -68,22 +63,14 @@ function ActionButton({
 function PersonalityMedia({
   item,
   containerRef,
-  priority,
 }: {
   item: ContentItem;
   containerRef: React.RefObject<HTMLElement | null>;
   priority?: boolean;
 }) {
   const [isInView, setIsInView] = useState(false);
-  const [imageReady, setImageReady] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const spokenIdRef = useRef<string | null>(null);
-  const isTalking = isInView && imageReady;
-  const style = item.portraitStyle ?? "realistic";
-  const focus = PORTRAIT_FOCUS[style];
-
-  useEffect(() => {
-    setImageReady(false);
-  }, [item.posterUrl]);
 
   useEffect(() => {
     const section = containerRef.current;
@@ -100,72 +87,47 @@ function PersonalityMedia({
     return () => observer.disconnect();
   }, [containerRef]);
 
+  // Auto-narrate when the slide scrolls into view; lip-sync via callbacks
   useEffect(() => {
     if (!isInView) {
       if (spokenIdRef.current === item.id) {
         stopCharacterSpeech();
         spokenIdRef.current = null;
+        setIsSpeaking(false);
       }
       return;
     }
-    if (spokenIdRef.current === item.id || !imageReady || item.imagePending) return;
+    if (spokenIdRef.current === item.id) return;
 
     const timer = window.setTimeout(() => {
       spokenIdRef.current = item.id;
-      speakAsCharacter(item.transcript, item.character);
+      speakAsCharacter(item.transcript, item.character, {
+        onStart: () => setIsSpeaking(true),
+        onEnd: () => setIsSpeaking(false),
+      });
     }, 80);
 
     return () => window.clearTimeout(timer);
-  }, [isInView, imageReady, item.imagePending, item.id, item.transcript, item.character]);
+  }, [isInView, item.id, item.transcript, item.character]);
 
   return (
     <>
-      <div className="absolute inset-0 overflow-hidden bg-pastel-cream">
-        {(!imageReady || item.imagePending) && (
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-            style={{ background: item.thumbnailColor }}
-          >
-            <div className="h-10 w-10 animate-pulse rounded-full bg-white/40" />
-            {item.imagePending && (
-              <p className="text-[11px] font-medium text-pastel-ink/80">
-                Generating {item.character.name}…
-              </p>
-            )}
-          </div>
-        )}
-        {item.posterUrl && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={item.posterUrl}
-            alt={`${item.character.name} teaching`}
-            decoding="async"
-            fetchPriority={priority ? "high" : "auto"}
-            loading={priority ? "eager" : "lazy"}
-            onLoad={() => setImageReady(true)}
-            className={cn(
-              "absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
-              focus,
-              imageReady ? "opacity-100" : "opacity-0",
-              isTalking && imageReady && "talking-portrait-active"
-            )}
-            draggable={false}
-          />
-        )}
-        {isTalking && (
-          <div
-            className={cn(
-              "pointer-events-none absolute left-1/2 h-7 w-12 -translate-x-1/2 rounded-full bg-white/30 blur-md talking-mouth-glow",
-              style === "illustration" ? "top-[38%]" : style === "3d" ? "top-[45%]" : "top-[40%]"
-            )}
-          />
-        )}
+      <div
+        className="absolute inset-0 overflow-hidden"
+        style={{ background: item.thumbnailColor }}
+      >
+        {/* Lip-syncing SVG avatar — moves its mouth while narrating */}
+        <CharacterSvgAvatar
+          personalityId={item.character.id}
+          personalityName={item.character.name}
+          isSpeaking={isSpeaking}
+        />
       </div>
 
       {/* Subtle dark scrim at bottom — no white wash */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/45 to-transparent" />
 
-      {isTalking && (
+      {isSpeaking && (
         <div className="absolute bottom-[12rem] left-1/2 z-10 flex -translate-x-1/2 items-end gap-[3px]">
           {[5, 10, 14, 11, 16, 8, 13, 9, 6, 15, 10, 5].map((h, i) => (
             <div

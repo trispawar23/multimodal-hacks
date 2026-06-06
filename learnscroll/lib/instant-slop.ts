@@ -34,7 +34,9 @@ export function generateInstantSlop(
     ),
     viewCount: Math.floor(Math.random() * 50000) + 8000,
     generated: true,
-    imagePending: true,
+    // Feed now renders the lip-syncing SVG avatar (CharacterSvgAvatar) instead
+    // of an AI-generated raster portrait, so no portrait fetch is needed.
+    imagePending: false,
   };
 }
 

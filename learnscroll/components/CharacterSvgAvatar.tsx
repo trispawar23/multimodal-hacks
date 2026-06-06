@@ -103,6 +103,12 @@ const PERSONALITY_STYLES: Record<string, SvgStyle> = {
     bgColorStart: "#004d40", bgColorEnd: "#001a14",
     accessory: "none", facialHair: "none",
   },
+  "einstein-cartoon": {
+    skinColor: "#ffe9dc", hairColor: "#e9eff5", hairStyle: "wild",
+    clothingColor: "#2d3748", clothingStyle: "suit",
+    bgColorStart: "#1a237e", bgColorEnd: "#0a0d2a",
+    accessory: "none", facialHair: "white-beard",
+  },
 };
 
 // ─── Sub-renderers (ported from CharacterAvatar.tsx) ─────────────────────────

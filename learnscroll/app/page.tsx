@@ -116,7 +116,6 @@ export default function FeedPage() {
   }
 
   const gradeLabel = useMemo(() => GRADE_LABELS[gradeLevel], [gradeLevel]);
-  const pendingCount = feedItems.filter((i) => i.imagePending).length;
 
   return (
     <div className="relative h-[100dvh] overflow-hidden bg-pastel-cream">
@@ -139,11 +138,7 @@ export default function FeedPage() {
           />
         </div>
         <p className="pointer-events-auto px-4 pb-1 text-center text-[10px] font-medium text-white/90 drop-shadow">
-          {gradeLabel}
-          {pendingCount > 0
-            ? ` · generating ${pendingCount} AI portrait${pendingCount > 1 ? "s" : ""}…`
-            : " · AI portraits ready"}
-          {portraitErrors > 0 ? " · some portraits failed" : ""}
+          {gradeLabel} · scroll — each tutor talks back
         </p>
       </div>
 

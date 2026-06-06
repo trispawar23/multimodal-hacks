@@ -34,8 +34,20 @@ export function speechIntro(text: string): string {
   return parts.slice(0, 2).join(" ").trim();
 }
 
-export function speakAsCharacter(text: string, character: AICharacter): void {
-  if (typeof window === "undefined" || !text.trim()) return;
+interface SpeakCallbacks {
+  onStart?: () => void;
+  onEnd?: () => void;
+}
+
+export function speakAsCharacter(
+  text: string,
+  character: AICharacter,
+  callbacks?: SpeakCallbacks
+): void {
+  if (typeof window === "undefined" || !text.trim()) {
+    callbacks?.onEnd?.();
+    return;
+  }
 
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(speechIntro(text));
@@ -50,6 +62,10 @@ export function speakAsCharacter(text: string, character: AICharacter): void {
 
   const voice = pickVoice(character);
   if (voice) utterance.voice = voice;
+
+  utterance.onstart = () => callbacks?.onStart?.();
+  utterance.onend = () => callbacks?.onEnd?.();
+  utterance.onerror = () => callbacks?.onEnd?.();
 
   window.speechSynthesis.speak(utterance);
 }
