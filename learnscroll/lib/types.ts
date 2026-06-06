@@ -22,6 +22,8 @@ export interface AICharacter {
   subjects: Topic[];
   initial: string;
   color: string;
+  /** Gemini TTS voice preset */
+  voiceName?: "Kore" | "Zephyr" | "Puck" | "Charon" | "Fenrir";
 }
 
 export type PortraitStyle = "illustration" | "3d" | "realistic";

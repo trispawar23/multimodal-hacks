@@ -5,6 +5,7 @@ export interface Personality extends AICharacter {
   voicePitch: number;
   voiceRate: number;
   voiceGender: "male" | "female" | "neutral";
+  voiceName: "Kore" | "Zephyr" | "Puck" | "Charon" | "Fenrir";
 }
 
 export const PERSONALITIES: Personality[] = [
@@ -19,6 +20,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.78,
     voiceRate: 0.92,
     voiceGender: "male",
+    voiceName: "Charon",
   },
   {
     id: "einstein",
@@ -31,6 +33,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.88,
     voiceRate: 0.96,
     voiceGender: "male",
+    voiceName: "Zephyr",
   },
   {
     id: "curie",
@@ -43,6 +46,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 1.12,
     voiceRate: 0.94,
     voiceGender: "female",
+    voiceName: "Kore",
   },
   {
     id: "darwin",
@@ -55,6 +59,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.82,
     voiceRate: 0.9,
     voiceGender: "male",
+    voiceName: "Fenrir",
   },
   {
     id: "euler",
@@ -67,6 +72,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.86,
     voiceRate: 1.0,
     voiceGender: "male",
+    voiceName: "Puck",
   },
   {
     id: "hypatia",
@@ -79,6 +85,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 1.1,
     voiceRate: 0.95,
     voiceGender: "female",
+    voiceName: "Kore",
   },
   {
     id: "turing",
@@ -91,6 +98,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.9,
     voiceRate: 1.02,
     voiceGender: "male",
+    voiceName: "Puck",
   },
   {
     id: "tesla",
@@ -103,6 +111,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.84,
     voiceRate: 0.98,
     voiceGender: "male",
+    voiceName: "Zephyr",
   },
   {
     id: "aristotle",
@@ -115,6 +124,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.8,
     voiceRate: 0.88,
     voiceGender: "male",
+    voiceName: "Charon",
   },
   {
     id: "shakespeare",
@@ -127,6 +137,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 0.87,
     voiceRate: 0.86,
     voiceGender: "male",
+    voiceName: "Fenrir",
   },
   {
     id: "cleopatra",
@@ -139,6 +150,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 1.08,
     voiceRate: 0.93,
     voiceGender: "female",
+    voiceName: "Kore",
   },
   {
     id: "sunny",
@@ -151,6 +163,7 @@ export const PERSONALITIES: Personality[] = [
     voicePitch: 1.18,
     voiceRate: 1.05,
     voiceGender: "neutral",
+    voiceName: "Puck",
   },
 ];
 
