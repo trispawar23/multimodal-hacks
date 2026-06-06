@@ -4,7 +4,7 @@
  * CharacterSvgAvatar
  *
  * Adapted from Luminary interactive-avatar-system/CharacterAvatar.tsx.
- * Renders a fully SVG-drawn portrait for each LearnScroll personality with:
+ * Renders a fully SVG-drawn portrait for each Luminary personality with:
  *   - Biological eye-blinking (random 4s–6s interval, 150ms blink window)
  *   - Lip-sync mouth animation (120ms oscillation while isSpeaking)
  *

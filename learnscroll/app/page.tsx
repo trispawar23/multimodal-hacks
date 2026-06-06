@@ -122,7 +122,7 @@ export default function FeedPage() {
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30">
         <div className="pointer-events-auto flex items-start justify-between gap-2 px-4 pt-4">
           <p className="text-[15px] font-semibold tracking-tight text-white drop-shadow-md">
-            LearnScroll
+            Luminary
           </p>
           <GradeSelector
             value={gradeLevel}

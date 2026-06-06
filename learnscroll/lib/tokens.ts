@@ -1,4 +1,4 @@
-/** Pastel minimal design tokens for LearnScroll */
+/** Pastel minimal design tokens for Luminary */
 export const pastel = {
   cream: "#FFF9F5",
   blush: "#FFE8EE",

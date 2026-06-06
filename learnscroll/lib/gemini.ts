@@ -1,5 +1,5 @@
 /**
- * Gemini API utilities for LearnScroll.
+ * Gemini API utilities for Luminary.
  *
  * Uses gemini-2.5-flash for fast operations (feed scoring, quiz gen, slop)
  *
@@ -235,7 +235,7 @@ export async function generatePersonalitySlop(
   });
 
   const prompt = `
-You write short-form educational "reel" scripts for LearnScroll — TikTok-style teaching from AI personality characters.
+You write short-form educational "reel" scripts for Luminary — TikTok-style teaching from AI personality characters.
 
 TOPIC: ${topic}
 GRADE LEVEL: ${gradeLevel}
