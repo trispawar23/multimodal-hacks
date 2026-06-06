@@ -102,7 +102,7 @@ function QuizContent() {
   if (done) {
     const pct = Math.round((score / questions.length) * 100);
     return (
-      <div className="min-h-screen bg-[#0d0d10] pb-24 flex flex-col">
+      <div className="min-h-screen bg-pastel-cream pb-24 flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
           <div
             className={cn(
@@ -117,18 +117,18 @@ function QuizContent() {
             {pct}%
           </div>
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-white">
+            <h2 className="text-2xl font-bold text-pastel-ink">
               {pct >= 80 ? "Excellent!" : pct >= 60 ? "Good effort!" : "Keep practicing!"}
             </h2>
-            <p className="text-zinc-400 mt-2 text-sm">
+            <p className="text-pastel-muted mt-2 text-sm">
               You got {score} out of {questions.length} correct.
             </p>
           </div>
 
-          <div className="w-full bg-[#16161c] border border-[#2a2a38] rounded-2xl p-4">
-            <p className="text-sm text-zinc-400">This quiz was based on:</p>
-            <p className="text-sm font-medium text-white mt-1 leading-snug">{content.title}</p>
-            <p className="text-xs text-zinc-600 mt-1">
+          <div className="w-full bg-white border border-surface-border rounded-2xl p-4">
+            <p className="text-sm text-pastel-muted">This quiz was based on:</p>
+            <p className="text-sm font-medium text-pastel-ink mt-1 leading-snug">{content.title}</p>
+            <p className="text-xs text-pastel-muted mt-1">
               taught by {content.character.name}
             </p>
           </div>
@@ -136,13 +136,13 @@ function QuizContent() {
           <div className="flex gap-3 w-full">
             <button
               onClick={() => { setCurrent(0); setSelected(null); setSubmitted(false); setScore(0); setDone(false); }}
-              className="flex-1 py-3 rounded-xl border border-[#2a2a38] text-zinc-300 text-sm font-medium"
+              className="flex-1 py-3 rounded-xl border border-surface-border text-pastel-ink text-sm font-medium"
             >
               Retake
             </button>
             <button
               onClick={() => router.push("/")}
-              className="flex-1 py-3 rounded-xl bg-brand-500 text-white text-sm font-semibold"
+              className="flex-1 py-3 rounded-xl bg-pastel-lilac text-pastel-ink text-sm font-semibold"
             >
               Back to Feed
             </button>
@@ -154,22 +154,22 @@ function QuizContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d0d10] pb-24 flex flex-col">
+    <div className="min-h-screen bg-pastel-cream pb-24 flex flex-col">
       {/* Header */}
       <header className="px-5 pt-14 pb-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-base font-bold text-white">
+            <h1 className="text-base font-bold text-pastel-ink">
               {content.topics[0].charAt(0).toUpperCase() + content.topics[0].slice(1)} Quiz
             </h1>
-            <p className="text-xs text-zinc-500">{content.character.name} · {content.gradeLevel}</p>
+            <p className="text-xs text-pastel-muted">{content.character.name} · {content.gradeLevel}</p>
           </div>
           <span className="text-sm font-semibold text-brand-500">
             {current + 1} / {questions.length}
           </span>
         </div>
         {/* Progress bar */}
-        <div className="h-1.5 bg-[#1e1e26] rounded-full overflow-hidden">
+        <div className="h-1.5 bg-pastel-sky rounded-full overflow-hidden">
           <div
             className="h-full bg-brand-500 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }}
@@ -179,9 +179,9 @@ function QuizContent() {
 
       <main className="flex-1 px-5 flex flex-col gap-4">
         {/* Question */}
-        <div className="bg-[#16161c] border border-[#2a2a38] rounded-2xl p-5">
-          <p className="text-[15px] font-medium text-white leading-relaxed">{q.question}</p>
-          <p className="text-[11px] text-zinc-600 mt-2">Based on content you watched</p>
+        <div className="bg-white border border-surface-border rounded-2xl p-5">
+          <p className="text-[15px] font-medium text-pastel-ink leading-relaxed">{q.question}</p>
+          <p className="text-[11px] text-pastel-muted mt-2">Based on content you watched</p>
         </div>
 
         {/* Options */}
@@ -195,10 +195,10 @@ function QuizContent() {
                 ? "border-green-500 bg-green-500/10 text-green-300"
                 : isSelected
                 ? "border-red-500 bg-red-500/10 text-red-300"
-                : "border-[#2a2a38] text-zinc-500 opacity-50"
+                : "border-surface-border text-pastel-muted opacity-50"
               : isSelected
-              ? "border-brand-500 bg-brand-500/10 text-white"
-              : "border-[#2a2a38] text-zinc-300 hover:border-zinc-600";
+              ? "border-brand-500 bg-brand-500/10 text-pastel-ink"
+              : "border-surface-border text-pastel-ink hover:border-zinc-600";
 
             return (
               <button
@@ -245,7 +245,7 @@ function QuizContent() {
             <p className="font-semibold mb-1">
               {selected === q.correctIndex ? "Correct!" : "Not quite —"}
             </p>
-            <p className="text-zinc-300 text-[13px]">{q.explanation}</p>
+            <p className="text-pastel-ink text-[13px]">{q.explanation}</p>
           </div>
         )}
       </main>
@@ -259,8 +259,8 @@ function QuizContent() {
             className={cn(
               "w-full py-3.5 rounded-xl text-[15px] font-semibold transition-all",
               selected !== null
-                ? "bg-brand-500 text-white hover:bg-brand-600"
-                : "bg-[#1e1e26] text-zinc-600 cursor-not-allowed"
+                ? "bg-pastel-lilac text-pastel-ink hover:bg-brand-600"
+                : "bg-pastel-sky text-pastel-muted cursor-not-allowed"
             )}
           >
             Submit Answer
@@ -268,7 +268,7 @@ function QuizContent() {
         ) : (
           <button
             onClick={handleNext}
-            className="w-full py-3.5 rounded-xl bg-brand-500 text-white text-[15px] font-semibold hover:bg-brand-600 transition-colors"
+            className="w-full py-3.5 rounded-xl bg-pastel-lilac text-pastel-ink text-[15px] font-semibold hover:bg-brand-600 transition-colors"
           >
             {current + 1 >= questions.length ? "See Results" : "Next Question"}
           </button>

@@ -1,39 +1,47 @@
 "use client";
 
 import { cn } from "./ui/cn";
-import type { Topic } from "@/lib/types";
-
-const ALL_TOPICS: { id: Topic | "all"; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "physics", label: "Physics" },
-  { id: "math", label: "Math" },
-  { id: "history", label: "History" },
-  { id: "chemistry", label: "Chemistry" },
-  { id: "literature", label: "Literature" },
-  { id: "biology", label: "Biology" },
-  { id: "engineering", label: "Engineering" },
-];
+import type { GradeLevel, Topic } from "@/lib/types";
+import { TOPIC_LABELS, topicsForGrade } from "@/lib/grade-topics";
+import { topicPastels } from "@/lib/tokens";
 
 interface TopicFilterBarProps {
   selected: Topic | "all";
   onChange: (topic: Topic | "all") => void;
+  gradeLevel: GradeLevel;
 }
 
-export function TopicFilterBar({ selected, onChange }: TopicFilterBarProps) {
+export function TopicFilterBar({
+  selected,
+  onChange,
+  gradeLevel,
+}: TopicFilterBarProps) {
+  const gradeTopics = topicsForGrade(gradeLevel);
+  const pills: { id: Topic | "all"; label: string }[] = [
+    { id: "all", label: "All" },
+    ...gradeTopics.map((t) => ({ id: t, label: TOPIC_LABELS[t] })),
+  ];
+
   return (
-    <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 py-2.5">
-      {ALL_TOPICS.map((t) => {
+    <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 py-2">
+      {pills.map((t) => {
         const active = selected === t.id;
+        const pastel = t.id !== "all" ? topicPastels[t.id] : null;
         return (
           <button
             key={t.id}
             onClick={() => onChange(t.id)}
             className={cn(
-              "flex-shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all border",
+              "flex-shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-all",
               active
-                ? "bg-brand-500 border-brand-500 text-white shadow-lg shadow-brand-500/20"
-                : "border-white/15 bg-black/35 text-white/75 backdrop-blur-sm hover:border-white/30 hover:text-white"
+                ? "bg-white/90 text-pastel-ink shadow-sm"
+                : "bg-white/50 text-pastel-muted backdrop-blur-sm"
             )}
+            style={
+              active && pastel
+                ? { background: pastel.bg, color: pastel.text }
+                : undefined
+            }
           >
             {t.label}
           </button>

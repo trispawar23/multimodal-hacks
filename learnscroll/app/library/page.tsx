@@ -27,20 +27,19 @@ function BookCover({
 }) {
   return (
     <div
-      className="relative rounded-xl overflow-hidden border border-[#2a2a38] flex flex-col justify-between p-4"
-      style={{ background: `${color}18`, height: 140, borderColor: `${color}30` }}
+      className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-surface-border p-4"
+      style={{ background: color, height: 140 }}
     >
-      {/* Spine accent */}
-      <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl" style={{ background: color }} />
+      <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl bg-white/50" />
       <div className="pl-1">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color }}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-pastel-muted">
           Study Guide
         </p>
-        <h3 className="text-[15px] font-bold text-white mt-1 leading-snug">{title}</h3>
+        <h3 className="mt-1 text-[15px] font-bold leading-snug text-pastel-ink">{title}</h3>
       </div>
       <div className="flex items-center justify-between pl-1">
-        <span className="text-[11px] text-zinc-500">{count} videos</span>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border" style={{ color, borderColor: `${color}40`, background: `${color}15` }}>
+        <span className="text-[11px] text-pastel-muted">{count} saved</span>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-pastel-ink">
           {GRADE_LABELS[grade]}
         </span>
       </div>
@@ -65,18 +64,17 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d0d10] pb-24">
-      <header className="px-5 pt-14 pb-5 border-b border-[#1e1e26]">
-        <h1 className="text-xl font-bold text-white">My Library</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+    <div className="min-h-screen bg-pastel-cream pb-24">
+      <header className="border-b border-surface-border px-5 pb-5 pt-14">
+        <h1 className="text-xl font-semibold text-pastel-ink">Saved</h1>
+        <p className="mt-1 text-sm text-pastel-muted">
           {MOCK_SAVED.length} saved · {MOCK_BOOKS.length} collections
         </p>
       </header>
 
-      <main className="px-4 pt-5 space-y-8">
-        {/* Books section */}
+      <main className="space-y-8 px-4 pt-5">
         <section>
-          <h2 className="text-[13px] font-semibold text-zinc-400 uppercase tracking-wider mb-3 px-1">
+          <h2 className="mb-3 px-1 text-[13px] font-semibold uppercase tracking-wider text-pastel-muted">
             Collections
           </h2>
           <div className="grid grid-cols-2 gap-3">
@@ -94,10 +92,10 @@ export default function LibraryPage() {
                   className={cn(
                     "w-full py-2 rounded-lg text-[12px] font-medium border transition-all",
                     compiling === book.id
-                      ? "border-brand-500/40 text-brand-400 animate-pulse"
+                      ? "animate-pulse border-brand-400 text-brand-500"
                       : book.items.length === 0
-                      ? "border-[#2a2a38] text-zinc-600 cursor-not-allowed"
-                      : "border-[#2a2a38] text-zinc-400 hover:border-brand-500/50 hover:text-brand-400"
+                      ? "cursor-not-allowed border-surface-border text-pastel-muted"
+                      : "border-surface-border text-pastel-muted hover:border-brand-400 hover:text-brand-500"
                   )}
                 >
                   {compiling === book.id ? "Compiling..." : "Generate PDF"}
@@ -109,7 +107,7 @@ export default function LibraryPage() {
 
         {/* Saved items */}
         <section>
-          <h2 className="text-[13px] font-semibold text-zinc-400 uppercase tracking-wider mb-3 px-1">
+          <h2 className="mb-3 px-1 text-[13px] font-semibold uppercase tracking-wider text-pastel-muted">
             Saved Items
           </h2>
           <div className="space-y-2.5">
@@ -118,22 +116,22 @@ export default function LibraryPage() {
               return (
                 <div
                   key={item.id}
-                  className="flex items-center gap-3 bg-[#16161c] border border-[#2a2a38] rounded-xl p-3.5"
+                  className="flex items-center gap-3 rounded-2xl border border-surface-border bg-white p-3.5"
                 >
                   <div
-                    className="w-9 h-11 rounded-lg flex items-center justify-center text-base font-bold text-white flex-shrink-0"
-                    style={{ background: book?.coverColor ?? "#4f6ef7" }}
+                    className="flex h-11 w-9 flex-shrink-0 items-center justify-center rounded-lg text-base font-bold text-pastel-ink"
+                    style={{ background: book?.coverColor ?? "#E4EEFF" }}
                   >
                     B
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-white truncate">{item.title}</p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5 capitalize">{item.topic}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-pastel-ink">{item.title}</p>
+                    <p className="mt-0.5 capitalize text-[11px] text-pastel-muted">{item.topic}</p>
                     {item.notes && (
-                      <p className="text-[11px] text-zinc-600 mt-0.5 truncate italic">"{item.notes}"</p>
+                      <p className="mt-0.5 truncate text-[11px] italic text-pastel-muted">&ldquo;{item.notes}&rdquo;</p>
                     )}
                   </div>
-                  <div className="text-[11px] text-zinc-600 flex-shrink-0">
+                  <div className="flex-shrink-0 text-[11px] text-pastel-muted">
                     {item.savedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </div>
                 </div>
@@ -143,12 +141,12 @@ export default function LibraryPage() {
         </section>
 
         {/* Empty state CTA */}
-        <div className="bg-[#16161c] border border-dashed border-[#2a2a38] rounded-2xl p-6 text-center">
-          <p className="text-sm text-zinc-400 font-medium">Save more content from the Feed</p>
-          <p className="text-xs text-zinc-600 mt-1 mb-4">Your saved videos auto-organize into study books</p>
+        <div className="rounded-2xl border border-dashed border-surface-border bg-white p-6 text-center">
+          <p className="text-sm font-medium text-pastel-ink">Save teachers from the Feed</p>
+          <p className="mb-4 mt-1 text-xs text-pastel-muted">Saved lessons auto-organize into study books</p>
           <Link
             href="/"
-            className="inline-flex px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors"
+            className="inline-flex rounded-full bg-pastel-lilac px-4 py-2 text-sm font-semibold text-pastel-ink transition-colors hover:bg-brand-200"
           >
             Go to Feed
           </Link>

@@ -24,6 +24,8 @@ export interface AICharacter {
   color: string;
 }
 
+export type PortraitStyle = "illustration" | "3d" | "realistic";
+
 export interface ContentItem {
   id: string;
   title: string;
@@ -35,14 +37,17 @@ export interface ContentItem {
   gradeLevel: GradeLevel;
   character: AICharacter;
   thumbnailColor: string;
-  /** Full-bleed poster frame when video is loading or unavailable */
   posterUrl: string;
-  /** Direct MP4/WebM URL for reel playback */
   videoUrl?: string;
-  /** AI character portrait with simulated talking animation (no video file) */
   talkingPortrait?: boolean;
+  /** Visual style of the personality portrait */
+  portraitStyle?: PortraitStyle;
   durationSec: number;
   viewCount: number;
+  /** True when created by Gemini (not mock catalog) */
+  generated?: boolean;
+  /** Waiting for Gemini portrait */
+  imagePending?: boolean;
 }
 
 export interface QuizQuestion {

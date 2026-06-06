@@ -4,6 +4,9 @@
 
 :root {
   --font-inter: "Inter", system-ui, sans-serif;
+  --bg-page: #fff9f5;
+  --text-ink: #4a4458;
+  --accent-lilac: #a894dc;
 }
 
 * {
@@ -13,13 +16,12 @@
 html,
 body {
   height: 100%;
-  background: #0d0d10;
-  color: #f1f1f3;
+  background: var(--bg-page);
+  color: var(--text-ink);
   font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Hide scrollbar on feed */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -28,7 +30,6 @@ body {
   scrollbar-width: none;
 }
 
-/* Waveform animation delays */
 .wave-bar:nth-child(1) { animation-delay: 0s; }
 .wave-bar:nth-child(2) { animation-delay: 0.1s; }
 .wave-bar:nth-child(3) { animation-delay: 0.2s; }
@@ -38,19 +39,18 @@ body {
 .wave-bar:nth-child(7) { animation-delay: 0.25s; }
 .wave-bar:nth-child(8) { animation-delay: 0.35s; }
 
-/* AI talking portrait — subtle Ken Burns + lip-sync pulse */
 @keyframes portraitTalk {
-  0%, 100% { transform: scale(1.04) translateY(0); }
-  50% { transform: scale(1.07) translateY(-0.5%); }
+  0%, 100% { transform: scale(1.03) translateY(0); }
+  50% { transform: scale(1.06) translateY(-0.4%); }
 }
 
 @keyframes mouthGlow {
-  0%, 100% { opacity: 0; transform: scaleY(0.6); }
-  40%, 60% { opacity: 0.35; transform: scaleY(1); }
+  0%, 100% { opacity: 0; transform: scaleY(0.5); }
+  40%, 60% { opacity: 0.25; transform: scaleY(1); }
 }
 
 .talking-portrait-active {
-  animation: portraitTalk 6s ease-in-out infinite;
+  animation: portraitTalk 5s ease-in-out infinite;
 }
 
 .talking-mouth-glow {

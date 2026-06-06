@@ -15,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-black text-white antialiased">
+      <body className="bg-pastel-cream text-pastel-ink antialiased">
         <div className="relative mx-auto min-h-screen max-w-[430px]">{children}</div>
       </body>
     </html>

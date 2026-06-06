@@ -9,20 +9,29 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // LearnScroll design tokens — extends Tailwind's slate palette
         brand: {
-          50: "#f0f4ff",
-          100: "#e0e9ff",
-          500: "#4f6ef7",
-          600: "#3b5af0",
-          700: "#2d48d6",
-          900: "#1a2fa3",
+          50: "#F5F0FF",
+          100: "#EDE4FF",
+          200: "#D9CCFF",
+          400: "#B8A4E8",
+          500: "#A894DC",
+          600: "#9278C8",
+        },
+        pastel: {
+          cream: "#FFF9F5",
+          blush: "#FFE8EE",
+          mint: "#DFF5EC",
+          sky: "#E4EEFF",
+          lilac: "#EDE4FF",
+          lemon: "#FFF6D6",
+          peach: "#FFE5D4",
+          ink: "#4A4458",
+          muted: "#8B839E",
         },
         surface: {
-          bg: "#0d0d10",
-          card: "#16161c",
-          overlay: "#1e1e26",
-          border: "#2a2a38",
+          bg: "#FFF9F5",
+          card: "#FFFFFF",
+          border: "#F0E8E4",
         },
       },
       fontFamily: {
@@ -32,9 +41,10 @@ const config: Config = {
         "4xl": "2rem",
       },
       animation: {
-        "waveform": "waveform 1.2s ease-in-out infinite",
+        waveform: "waveform 1.2s ease-in-out infinite",
         "slide-up": "slideUp 0.3s ease-out",
         "fade-in": "fadeIn 0.2s ease-out",
+        float: "float 4s ease-in-out infinite",
       },
       keyframes: {
         waveform: {
@@ -48,6 +58,10 @@ const config: Config = {
         fadeIn: {
           from: { opacity: "0" },
           to: { opacity: "1" },
+        },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-4px)" },
         },
       },
     },
