@@ -82,8 +82,8 @@ body {
 .talking-mouth-aperture {
   position: relative;
   display: flex;
-  height: 18px;
-  width: 46px;
+  height: 24px;
+  width: 64px;
   align-items: center;
   justify-content: center;
   gap: 3px;
@@ -91,18 +91,19 @@ body {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.72);
   background:
-    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.78), rgba(168, 200, 255, 0.42) 48%, rgba(74, 68, 88, 0.1) 78%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9), rgba(168, 200, 255, 0.58) 48%, rgba(74, 68, 88, 0.18) 78%),
     rgba(255, 255, 255, 0.18);
   box-shadow:
-    0 0 12px rgba(255, 255, 255, 0.55),
-    0 0 22px rgba(168, 200, 255, 0.42);
+    0 0 14px rgba(255, 255, 255, 0.72),
+    0 0 30px rgba(168, 200, 255, 0.58),
+    inset 0 0 12px rgba(255, 255, 255, 0.42);
   animation: mouthAperture 0.42s ease-in-out infinite;
 }
 
 .talking-mouth-aperture span {
   display: block;
-  height: 12px;
-  width: 2px;
+  height: 16px;
+  width: 3px;
   transform-origin: center;
   border-radius: 999px;
   background: rgba(74, 68, 88, 0.72);

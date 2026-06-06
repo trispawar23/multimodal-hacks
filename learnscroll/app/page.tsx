@@ -13,7 +13,8 @@ import {
 } from "@/lib/instant-slop";
 import { topicAllowedForGrade, topicsForGrade } from "@/lib/grade-topics";
 import { preloadVoices, stopCharacterSpeech } from "@/lib/character-voice";
-import { readFeedMuted, writeFeedMuted, readSavedGrade, writeSavedGrade } from "@/lib/feed-audio";
+import { stopGeminiVoice } from "@/lib/gemini-voice-client";
+import { readFeedMuted, writeFeedMuted, readSavedGrade, writeSavedGrade, unlockFeedSpeech } from "@/lib/feed-audio";
 import {
   fetchPortraitForItem,
   getCachedPortrait,
@@ -55,6 +56,14 @@ export default function FeedPage() {
     preloadVoices();
     setSavedIds(getSavedIds());
     setMuted(readFeedMuted());
+
+    const unlock = () => unlockFeedSpeech();
+    document.addEventListener("pointerdown", unlock, { once: true, capture: true });
+    document.addEventListener("keydown", unlock, { once: true, capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", unlock, { capture: true });
+      document.removeEventListener("keydown", unlock, { capture: true });
+    };
   }, []);
 
   function handleGradeChange(grade: GradeLevel) {
@@ -70,6 +79,7 @@ export default function FeedPage() {
       writeFeedMuted(next);
       if (next) {
         stopCharacterSpeech();
+        stopGeminiVoice();
       }
       return next;
     });

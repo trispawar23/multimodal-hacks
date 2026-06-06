@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ContentItem, PortraitStyle } from "@/lib/types";
 import { topicPastels } from "@/lib/tokens";
+import { onFeedSpeechUnlock } from "@/lib/feed-audio";
 import { playGeminiVoice, stopGeminiVoice } from "@/lib/gemini-voice-client";
 import { speakAsCharacter, stopCharacterSpeech } from "@/lib/character-voice";
 import { isSpeechInputSupported, startHoldToSpeak, type HoldToSpeakSession } from "@/lib/speech-input";
@@ -327,19 +328,24 @@ function PersonalityMedia({
   item,
   containerRef,
   priority,
+  muted,
   externalSpeaking,
   onVisibilityChange,
 }: {
   item: ContentItem;
   containerRef: React.RefObject<HTMLElement | null>;
   priority?: boolean;
+  muted?: boolean;
   externalSpeaking?: boolean;
   onVisibilityChange?: (id: string, visible: boolean) => void;
 }) {
   const [isInView, setIsInView] = useState(!!priority);
   const [baseReady, setBaseReady] = useState(false);
   const [aiReady, setAiReady] = useState(false);
-  const isSpeaking = !!externalSpeaking;
+  const [autoSpeaking, setAutoSpeaking] = useState(false);
+  const autoPlayedRef = useRef<string | null>(null);
+  const autoTimerRef = useRef<number | null>(null);
+  const isSpeaking = autoSpeaking || !!externalSpeaking;
   const style = item.portraitStyle ?? "illustration";
   const focus = PORTRAIT_FOCUS[style];
   const eager = priority || isInView;
@@ -353,6 +359,11 @@ function PersonalityMedia({
   useEffect(() => {
     setAiReady(false);
   }, [item.aiPosterUrl]);
+
+  useEffect(() => {
+    autoPlayedRef.current = null;
+    setAutoSpeaking(false);
+  }, [item.id]);
 
   // If src is already cached (e.g. data URL), onLoad may not fire in some browsers
   useEffect(() => {
@@ -382,6 +393,73 @@ function PersonalityMedia({
       onVisibilityChange?.(item.id, false);
     };
   }, [containerRef, item.id, onVisibilityChange, priority]);
+
+  const playAutoSpeech = useCallback((reason: "visible" | "unlock") => {
+    if (muted || !isInView || externalSpeaking) return;
+    if (autoPlayedRef.current === item.id) return;
+
+    voiceTimingLog("auto_speech.start", {
+      contentId: item.id,
+      characterId: item.character.id,
+      reason,
+      transcriptLength: item.transcript.length,
+    });
+
+    stopGeminiVoice();
+    stopCharacterSpeech();
+    speakAsCharacter(item.transcript, item.character, {
+      muted,
+      onStart: () => {
+        autoPlayedRef.current = item.id;
+        setAutoSpeaking(true);
+      },
+      onEnd: () => setAutoSpeaking(false),
+      onError: () => setAutoSpeaking(false),
+    });
+  }, [
+    muted,
+    isInView,
+    externalSpeaking,
+    item.id,
+    item.character,
+    item.transcript,
+  ]);
+
+  useEffect(() => {
+    if (autoTimerRef.current) {
+      window.clearTimeout(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+
+    if (muted || externalSpeaking) {
+      setAutoSpeaking(false);
+      return;
+    }
+
+    if (!isInView) {
+      setAutoSpeaking(false);
+      stopCharacterSpeech();
+      return;
+    }
+
+    autoTimerRef.current = window.setTimeout(() => {
+      autoTimerRef.current = null;
+      playAutoSpeech("visible");
+    }, 280);
+
+    return () => {
+      if (autoTimerRef.current) {
+        window.clearTimeout(autoTimerRef.current);
+        autoTimerRef.current = null;
+      }
+    };
+  }, [isInView, muted, externalSpeaking, item.id, playAutoSpeech]);
+
+  useEffect(() => {
+    return onFeedSpeechUnlock(() => {
+      playAutoSpeech("unlock");
+    });
+  }, [isInView, muted, externalSpeaking, item.id, playAutoSpeech]);
 
   return (
     <>
@@ -486,6 +564,7 @@ export function ReelSlide({
         item={item}
         containerRef={sectionRef}
         priority={priority}
+        muted={muted}
         externalSpeaking={!muted && (talkPhase === "listening" || talkPhase === "answering")}
         onVisibilityChange={onVisibilityChange}
       />
