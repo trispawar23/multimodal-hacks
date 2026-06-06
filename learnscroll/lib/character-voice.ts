@@ -3,6 +3,7 @@ import type { Personality } from "./personalities";
 import { readFeedMuted } from "./feed-audio";
 
 let voicesReady = false;
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
 function isPersonality(c: AICharacter): c is Personality {
   return "voicePitch" in c && "voiceGender" in c;
@@ -24,7 +25,6 @@ const PERSONALITY_VOICE_NAMES: Record<string, string[]> = {
   sunny: ["Junior", "Kathy", "Zoe", "Google UK English Female"],
 };
 
-/** Stable slot when name matching fails — each personality gets a different voice */
 const MALE_VOICE_SLOTS: Record<string, number> = {
   newton: 0,
   aristotle: 1,
@@ -42,15 +42,46 @@ const FEMALE_VOICE_SLOTS: Record<string, number> = {
   cleopatra: 2,
 };
 
+function synth(): SpeechSynthesis | null {
+  if (typeof window === "undefined") return null;
+  return window.speechSynthesis ?? null;
+}
+
 function englishVoices(): SpeechSynthesisVoice[] {
-  if (typeof window === "undefined") return [];
-  return window.speechSynthesis
-    .getVoices()
-    .filter((v) => v.lang.startsWith("en"));
+  const s = synth();
+  if (!s) return [];
+  return s.getVoices().filter((v) => v.lang.startsWith("en"));
+}
+
+function waitForVoices(timeoutMs = 1200): Promise<SpeechSynthesisVoice[]> {
+  const existing = englishVoices();
+  if (existing.length) return Promise.resolve(existing);
+
+  return new Promise((resolve) => {
+    const s = synth();
+    if (!s) {
+      resolve([]);
+      return;
+    }
+
+    const finish = () => {
+      s.removeEventListener("voiceschanged", onChange);
+      clearTimeout(timer);
+      resolve(englishVoices());
+    };
+
+    const onChange = () => {
+      if (englishVoices().length) finish();
+    };
+
+    const timer = setTimeout(finish, timeoutMs);
+    s.addEventListener("voiceschanged", onChange);
+    s.getVoices();
+  });
 }
 
 function isFemaleVoice(name: string): boolean {
-  return /female|samantha|karen|victoria|zira|fiona|moira|tessa|kate|serena|amelie|martha|susan|aria|jenny|sonia|marie|zira|shelley|hazel|heather|linda|michelle|nancy|sara|vicki|laura|susan/i.test(
+  return /female|samantha|karen|victoria|zira|fiona|moira|tessa|kate|serena|amelie|martha|susan|aria|jenny|sonia|marie|shelley|hazel|heather|linda|michelle|nancy|sara|vicki|laura/i.test(
     name
   );
 }
@@ -103,34 +134,56 @@ function pickFromPool(
   return pool[slot % pool.length];
 }
 
-function pickVoice(character: AICharacter): SpeechSynthesisVoice | null {
-  const en = englishVoices();
-  if (!en.length) return null;
+function pickVoice(
+  character: AICharacter,
+  voices: SpeechSynthesisVoice[]
+): SpeechSynthesisVoice | null {
+  if (!voices.length) return null;
 
   if (!isPersonality(character)) {
-    return en[0];
+    return voices[0];
   }
 
   const prefs = PERSONALITY_VOICE_NAMES[character.id] ?? [];
-  const named = matchByName(en, prefs);
+  const named = matchByName(voices, prefs);
   if (named) return named;
 
   const gender = character.voiceGender;
 
   if (gender === "female") {
-    const pool = femaleVoicePool(en);
+    const pool = femaleVoicePool(voices);
     const slot = FEMALE_VOICE_SLOTS[character.id] ?? 0;
-    return pickFromPool(pool, slot) ?? en[0];
+    return pickFromPool(pool, slot) ?? voices[0];
   }
 
   if (gender === "neutral") {
-    const pool = kidVoicePool(en);
-    return pickFromPool(pool, 0) ?? en[0];
+    const pool = kidVoicePool(voices);
+    return pickFromPool(pool, 0) ?? voices[0];
   }
 
-  const pool = maleVoicePool(en);
+  const pool = maleVoicePool(voices);
   const slot = MALE_VOICE_SLOTS[character.id] ?? 0;
-  return pickFromPool(pool, slot) ?? en[0];
+  return pickFromPool(pool, slot) ?? voices[0];
+}
+
+function startKeepAlive(): void {
+  stopKeepAlive();
+  keepAliveTimer = setInterval(() => {
+    const s = synth();
+    if (!s?.speaking) {
+      stopKeepAlive();
+      return;
+    }
+    s.pause();
+    s.resume();
+  }, 10000);
+}
+
+function stopKeepAlive(): void {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
 }
 
 /** Spoken intro — enough to hear the character teach the topic in view */
@@ -152,63 +205,93 @@ export function speakAsCharacter(
     muted?: boolean;
   }
 ): void {
-  if (typeof window === "undefined" || !text.trim()) return;
+  const s = synth();
+  if (!s || !text.trim()) return;
+
   const isMuted = hooks?.muted ?? readFeedMuted();
   if (!hooks?.force && isMuted) return;
 
-  const run = () => {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(speechIntro(text));
+  const spoken = speechIntro(text);
 
-    if (isPersonality(character)) {
-      utterance.pitch = character.voicePitch;
-      utterance.rate = character.voiceRate;
-    } else {
-      utterance.pitch = 1;
-      utterance.rate = 1;
-    }
+  void waitForVoices().then((voices) => {
+    s.cancel();
+    stopKeepAlive();
 
-    const voice = pickVoice(character);
-    if (voice) utterance.voice = voice;
+    const voice = pickVoice(character, voices);
+    let started = false;
 
-    utterance.onstart = () => hooks?.onStart?.();
-    utterance.onend = () => hooks?.onEnd?.();
-    utterance.onerror = () => {
-      hooks?.onError?.();
-      hooks?.onEnd?.();
+    const dispatch = () => {
+      const utterance = new SpeechSynthesisUtterance(spoken);
+
+      if (isPersonality(character)) {
+        utterance.pitch = character.voicePitch;
+        utterance.rate = character.voiceRate;
+      } else {
+        utterance.pitch = 1;
+        utterance.rate = 1;
+      }
+
+      if (voice) utterance.voice = voice;
+
+      utterance.onstart = () => {
+        started = true;
+        startKeepAlive();
+        hooks?.onStart?.();
+      };
+
+      utterance.onend = () => {
+        stopKeepAlive();
+        hooks?.onEnd?.();
+      };
+
+      utterance.onerror = (event) => {
+        stopKeepAlive();
+        if (event.error === "canceled" || event.error === "interrupted") {
+          if (started) hooks?.onEnd?.();
+          return;
+        }
+        hooks?.onError?.();
+        hooks?.onEnd?.();
+      };
+
+      s.speak(utterance);
     };
 
-    window.speechSynthesis.speak(utterance);
-  };
+    dispatch();
 
-  if (window.speechSynthesis.getVoices().length) {
-    run();
-    return;
-  }
-
-  const onVoices = () => {
-    window.speechSynthesis.removeEventListener("voiceschanged", onVoices);
-    run();
-  };
-  window.speechSynthesis.addEventListener("voiceschanged", onVoices);
-  window.speechSynthesis.getVoices();
+    // Chrome sometimes queues but never starts — nudge after a tick
+    setTimeout(() => {
+      if (!started && s.speaking) {
+        s.pause();
+        s.resume();
+      } else if (!started && !s.speaking) {
+        dispatch();
+      }
+    }, 250);
+  });
 }
 
 export function stopCharacterSpeech(): void {
-  if (typeof window === "undefined") return;
-  window.speechSynthesis.cancel();
+  const s = synth();
+  if (!s) return;
+  stopKeepAlive();
+  s.cancel();
 }
 
 export function preloadVoices(): void {
   if (typeof window === "undefined") return;
   const load = () => {
-    window.speechSynthesis.getVoices();
-    voicesReady = true;
+    synth()?.getVoices();
+    voicesReady = englishVoices().length > 0;
   };
   load();
-  window.speechSynthesis.onvoiceschanged = load;
+  window.speechSynthesis?.addEventListener("voiceschanged", load);
 }
 
 export function areVoicesReady(): boolean {
-  return voicesReady;
+  return voicesReady || englishVoices().length > 0;
+}
+
+export function isSpeechOutputSupported(): boolean {
+  return typeof window !== "undefined" && "speechSynthesis" in window;
 }

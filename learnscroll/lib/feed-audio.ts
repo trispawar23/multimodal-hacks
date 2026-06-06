@@ -27,8 +27,25 @@ export function writeFeedMuted(muted: boolean): void {
 
 const SPEECH_UNLOCK_EVENT = "learnscroll-speech-unlock";
 
+let speechPrimed = false;
+
+/** Prime TTS inside a user-gesture handler (Safari / Chrome autoplay). */
+export function primeSpeechSynthesis(): void {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.getVoices();
+  const prime = new SpeechSynthesisUtterance("\u200B");
+  prime.volume = 0.01;
+  prime.rate = 2;
+  window.speechSynthesis.speak(prime);
+}
+
+/** Call from a user-gesture handler to unlock browser speech. */
 export function unlockFeedSpeech(): void {
   if (typeof window === "undefined") return;
+  if (!speechPrimed) {
+    primeSpeechSynthesis();
+    speechPrimed = true;
+  }
   window.dispatchEvent(new Event(SPEECH_UNLOCK_EVENT));
 }
 
@@ -36,4 +53,8 @@ export function onFeedSpeechUnlock(listener: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   window.addEventListener(SPEECH_UNLOCK_EVENT, listener);
   return () => window.removeEventListener(SPEECH_UNLOCK_EVENT, listener);
+}
+
+export function isSpeechPrimed(): boolean {
+  return speechPrimed;
 }
