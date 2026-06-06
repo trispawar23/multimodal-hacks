@@ -130,14 +130,6 @@ function ReelMedia({
           </span>
         </div>
 
-        {/* Live talking indicator */}
-        {isTalking && (
-          <div className="absolute right-4 top-[9.5rem] z-10 flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 backdrop-blur-sm">
-            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-            <span className="text-[10px] font-medium text-white/90">Newton is speaking</span>
-          </div>
-        )}
-
         {/* Mini waveform while talking */}
         {isTalking && (
           <div className="absolute bottom-[11.5rem] left-1/2 z-10 flex -translate-x-1/2 items-end gap-[3px]">
@@ -148,15 +140,6 @@ function ReelMedia({
                 style={{ height: h, animationDelay: `${i * 0.07}s` }}
               />
             ))}
-          </div>
-        )}
-
-        {/* Simulated caption bubble */}
-        {isTalking && (
-          <div className="absolute bottom-[13.5rem] left-4 right-4 z-10 mx-auto max-w-[90%] rounded-2xl bg-black/55 px-4 py-3 backdrop-blur-md ring-1 ring-white/10">
-            <p className="text-center text-[13px] font-medium leading-snug text-white">
-              &ldquo;An object in motion stays in motion&hellip; that is why seatbelts exist.&rdquo;
-            </p>
           </div>
         )}
       </>
@@ -211,6 +194,7 @@ function ReelMedia({
 export function ReelSlide({ item, saved, onSave, onVoice }: ReelSlideProps) {
   const topic = item.topics[0];
   const sectionRef = useRef<HTMLElement>(null);
+  const [captionOpen, setCaptionOpen] = useState(false);
 
   return (
     <section
@@ -241,7 +225,7 @@ export function ReelSlide({ item, saved, onSave, onVoice }: ReelSlideProps) {
         </span>
       </div>
 
-      {/* Bottom caption — overlays video, no card */}
+      {/* Bottom caption — title always visible; description on demand */}
       <div className="absolute bottom-24 left-4 right-[4.5rem] z-10">
         {item.talkingPortrait && (
           <p className="mb-1 text-[11px] font-semibold text-violet-300">
@@ -252,9 +236,39 @@ export function ReelSlide({ item, saved, onSave, onVoice }: ReelSlideProps) {
         <h2 className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-white drop-shadow-md">
           {item.title}
         </h2>
-        <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-white/80 drop-shadow">
-          {item.transcript}
-        </p>
+
+        <button
+          type="button"
+          onClick={() => setCaptionOpen((open) => !open)}
+          className="mt-1.5 w-full text-left"
+          aria-expanded={captionOpen}
+        >
+          {captionOpen ? (
+            <p className="text-[12px] leading-relaxed text-white/85 drop-shadow">
+              {item.transcript}
+            </p>
+          ) : (
+            <p className="line-clamp-1 text-[12px] leading-relaxed text-white/55 drop-shadow">
+              {item.transcript}
+            </p>
+          )}
+          <span className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-medium text-white/60">
+            {captionOpen ? "Show less" : "More"}
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              className={cn("transition-transform", captionOpen && "rotate-180")}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
+        </button>
+
         <p className="mt-2 text-[10px] text-white/50">
           {Math.floor(item.durationSec / 60)}:{String(item.durationSec % 60).padStart(2, "0")} ·{" "}
           {(item.viewCount / 1_000_000).toFixed(1)}M views
