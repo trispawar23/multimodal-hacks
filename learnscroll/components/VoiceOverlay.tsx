@@ -17,6 +17,7 @@ import type { ContentItem } from "@/lib/types";
 import { CharacterSvgAvatar } from "./CharacterSvgAvatar";
 import { cn } from "./ui/cn";
 import { getPersonality } from "@/lib/personalities";
+import { stopCharacterSpeech } from "@/lib/character-voice";
 
 interface VoiceOverlayProps {
   content: ContentItem | null;
@@ -117,8 +118,9 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cleanup audio on unmount
+  // Silence any feed narration playing behind the overlay, and clean up on unmount
   useEffect(() => {
+    stopCharacterSpeech();
     return () => {
       stopSpeaking();
     };

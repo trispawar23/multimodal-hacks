@@ -1,10 +1,21 @@
 import type { AICharacter } from "./types";
-import type { Personality } from "./personalities";
+import { getPersonality, type Personality } from "./personalities";
 
 let voicesReady = false;
 
+// Tracks the currently playing Gemini audio so we can stop it on demand.
+let currentAudio: HTMLAudioElement | null = null;
+// Monotonic token: every new speak / stop bumps it, so in-flight async
+// requests that have been superseded can detect it and bail out.
+let speakSeq = 0;
+
 function isPersonality(c: AICharacter): c is Personality {
   return "voicePitch" in c && "voiceGender" in c;
+}
+
+function resolveVoiceName(character: AICharacter): string {
+  if (character.voiceName) return character.voiceName;
+  return getPersonality(character.id).voiceName ?? "Zephyr";
 }
 
 function pickVoice(character: AICharacter): SpeechSynthesisVoice | null {
@@ -39,19 +50,29 @@ interface SpeakCallbacks {
   onEnd?: () => void;
 }
 
-export function speakAsCharacter(
-  text: string,
+/** Pause any playing Gemini audio + cancel browser speech (no token bump). */
+function hardStop(): void {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  if (typeof window !== "undefined" && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+/** Browser Web Speech API — used as the fallback when Gemini TTS is unavailable. */
+function browserSpeak(
+  spoken: string,
   character: AICharacter,
   callbacks?: SpeakCallbacks
 ): void {
-  if (typeof window === "undefined" || !text.trim()) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     callbacks?.onEnd?.();
     return;
   }
 
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(speechIntro(text));
-
+  const utterance = new SpeechSynthesisUtterance(spoken);
   if (isPersonality(character)) {
     utterance.pitch = character.voicePitch;
     utterance.rate = character.voiceRate;
@@ -70,9 +91,77 @@ export function speakAsCharacter(
   window.speechSynthesis.speak(utterance);
 }
 
+/**
+ * Speak as a character — Gemini TTS first, browser speechSynthesis as fallback.
+ *
+ * Used by both the feed auto-narration and (indirectly) anywhere else that
+ * wants high-fidelity Gemini voices with a graceful offline fallback.
+ */
+export async function speakAsCharacter(
+  text: string,
+  character: AICharacter,
+  callbacks?: SpeakCallbacks
+): Promise<void> {
+  if (typeof window === "undefined" || !text.trim()) {
+    callbacks?.onEnd?.();
+    return;
+  }
+
+  hardStop();
+  const seq = ++speakSeq;
+
+  const spoken = speechIntro(text);
+  const voiceName = resolveVoiceName(character);
+
+  try {
+    const res = await fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: spoken, voiceName }),
+    });
+    if (seq !== speakSeq) return; // superseded while awaiting
+
+    if (res.ok) {
+      const data = await res.json();
+      if (seq !== speakSeq) return;
+
+      if (data.audioData) {
+        const bytes = Uint8Array.from(atob(data.audioData), (c) => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mp3" }));
+        const audio = new Audio(url);
+        currentAudio = audio;
+
+        audio.onended = () => {
+          if (currentAudio === audio) currentAudio = null;
+          URL.revokeObjectURL(url);
+          callbacks?.onEnd?.();
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          callbacks?.onEnd?.();
+        };
+
+        try {
+          await audio.play();
+          callbacks?.onStart?.();
+          return;
+        } catch {
+          // Autoplay blocked (no user gesture yet) — fall through to browser TTS
+          if (currentAudio === audio) currentAudio = null;
+          URL.revokeObjectURL(url);
+        }
+      }
+    }
+    throw new Error("Gemini TTS unavailable");
+  } catch {
+    if (seq !== speakSeq) return;
+    browserSpeak(spoken, character, callbacks);
+  }
+}
+
 export function stopCharacterSpeech(): void {
-  if (typeof window === "undefined") return;
-  window.speechSynthesis.cancel();
+  speakSeq++; // invalidate any in-flight Gemini request
+  hardStop();
 }
 
 export function preloadVoices(): void {
