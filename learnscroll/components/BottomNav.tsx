@@ -9,21 +9,20 @@ const NAV_ITEMS = [
     href: "/",
     label: "Feed",
     icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.6} strokeLinecap="round">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
       </svg>
     ),
   },
   {
     href: "/library",
-    label: "Library",
+    label: "Saved",
     icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.6} strokeLinecap="round">
+        <path d="M6 2h12a1 1 0 0 1 1 1v18l-7-4-7 4V3a1 1 0 0 1 1-1z" />
       </svg>
     ),
   },
@@ -31,10 +30,9 @@ const NAV_ITEMS = [
     href: "/quiz",
     label: "Quiz",
     icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.6} strokeLinecap="round">
         <circle cx="12" cy="12" r="10" />
         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-        <circle cx="12" cy="17" r="1" fill="currentColor" />
       </svg>
     ),
   },
@@ -44,8 +42,8 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-[#0d0d10]/95 backdrop-blur border-t border-[#2a2a38]">
-      <div className="flex items-center justify-around px-2 py-2 pb-safe">
+    <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 border-t border-surface-border bg-white/90 backdrop-blur-md">
+      <div className="flex items-center justify-around px-2 py-2">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
@@ -53,12 +51,12 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl transition-colors min-w-[56px]",
-                isActive ? "text-brand-500" : "text-zinc-500 hover:text-zinc-300"
+                "flex min-w-[56px] flex-col items-center gap-0.5 rounded-2xl px-4 py-1.5 transition-colors",
+                isActive ? "text-brand-500" : "text-pastel-muted hover:text-pastel-ink"
               )}
             >
               {item.icon(isActive)}
-              <span className={cn("text-[10px] font-medium", isActive ? "text-brand-500" : "text-zinc-500")}>
+              <span className={cn("text-[10px] font-medium", isActive ? "text-brand-500" : "text-pastel-muted")}>
                 {item.label}
               </span>
             </Link>

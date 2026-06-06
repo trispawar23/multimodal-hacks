@@ -1,59 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
-import { buildCharacterSystemPrompt } from "@/lib/gemini";
-import { CHARACTERS, FEED_ITEMS } from "@/lib/mock-data";
+import { generateCharacterReply } from "@/lib/gemini";
+import { getPersonality } from "@/lib/personalities";
+import type { GradeLevel, Topic } from "@/lib/types";
 
-const SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
-];
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { contentId, characterId, question, transcript } = body as {
-      contentId: string;
+    const body = (await req.json()) as {
       characterId: string;
       question: string;
+      title?: string;
       transcript?: string;
+      gradeLevel?: GradeLevel;
+      topics?: Topic[];
+      history?: { role: "user" | "character"; text: string }[];
     };
 
-    const character = CHARACTERS.find((c) => c.id === characterId);
-    const content = FEED_ITEMS.find((f) => f.id === contentId);
-
-    if (!character || !content) {
-      return NextResponse.json({ error: "Character or content not found" }, { status: 404 });
+    const { characterId, question } = body;
+    if (!characterId?.trim() || !question?.trim()) {
+      return NextResponse.json({ error: "Missing characterId or question" }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      // Demo fallback when no API key is set
+    const personality = getPersonality(characterId);
+    const title = body.title ?? "this lesson";
+    const transcript = body.transcript ?? "";
+    const gradeLevel: GradeLevel = body.gradeLevel ?? "9-12";
+    const topics = body.topics ?? personality.subjects;
+    const history = body.history ?? [];
+
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({
-        answer: `${character.name} here. That's a fascinating question! Based on what we just explored — ${content.title} — the key insight is that ${content.transcript.split(".")[0].toLowerCase()}. Would you like me to elaborate further?`,
+        answer: `${personality.name} here. "${question}" — a fine question! From what we covered in "${title}", the heart of it is: ${transcript.split(".")[0] || "keep exploring and stay curious"}. Ask me about my life or this subject anytime.`,
         characterId,
         grounded: false,
         fallback: true,
       });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-latest",
-      safetySettings: SAFETY_SETTINGS,
-      generationConfig: { temperature: 0.7, maxOutputTokens: 256 },
-      systemInstruction: buildCharacterSystemPrompt(
-        character.name,
-        character.era,
-        character.subjects.join(", "),
-        content.gradeLevel,
-        transcript ?? content.transcript
-      ),
-    });
-
-    const result = await model.generateContent(question);
-    const answer = result.response.text();
+    const answer = await generateCharacterReply(
+      characterId,
+      question.trim(),
+      { title, transcript, gradeLevel, topics },
+      history
+    );
 
     return NextResponse.json({
       answer,
@@ -63,9 +53,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Voice session error:", error);
-    return NextResponse.json(
-      { error: "Voice session failed", fallback: true },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Voice session failed";
+    return NextResponse.json({ error: message, fallback: true }, { status: 500 });
   }
 }
