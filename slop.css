@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.4);
+}
+
+/* Base custom styles for interactive UI elements */
+body {
+  background-color: #0A0A0B;
+  color: #cbd5e1;
+  overflow-x: hidden;
+}
+
+/* Subtitle highlight text animation */
+.sub-highlight {
+  background: linear-gradient(120deg, rgba(34, 211, 238, 0.25) 0%, rgba(34, 211, 238, 0.1) 100%);
+  border-bottom: 2px solid rgba(34, 211, 238, 0.6);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+/* Vertical feed scroll snap */
+.feed-container {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+}
+.feed-item {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
