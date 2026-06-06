@@ -1,32 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateQuiz } from "@/lib/gemini";
-import { FEED_ITEMS } from "@/lib/mock-data";
+import { generateQuizFromSaved } from "@/lib/gemini";
+import {
+  dominantGradeLevel,
+  fallbackQuizForSaved,
+  quizTitleForTopic,
+} from "@/lib/quiz-fallback";
+import type { ContentItem, GradeLevel, Topic } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   try {
-    const { contentId, gradeLevel = "9-12", questionCount = 5 } = await req.json();
+    const body = (await req.json()) as {
+      topic?: Topic | "all";
+      contents?: ContentItem[];
+      gradeLevel?: GradeLevel;
+      questionCount?: number;
+    };
 
-    const content = FEED_ITEMS.find((f) => f.id === contentId);
-    if (!content) {
-      return NextResponse.json({ error: "Content not found" }, { status: 404 });
+    const contents = body.contents ?? [];
+    if (!contents.length) {
+      return NextResponse.json({ error: "No saved content provided" }, { status: 400 });
     }
+
+    const topic = body.topic ?? "all";
+    const gradeLevel = body.gradeLevel ?? dominantGradeLevel(contents);
+    const questionCount = body.questionCount ?? 5;
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({
-        quizId: `quiz-${contentId}-demo`,
-        contentId,
+        title: quizTitleForTopic(topic, contents.length),
+        gradeLevel,
+        questions: fallbackQuizForSaved(contents, topic, questionCount),
         fallback: true,
-        message: "Set GEMINI_API_KEY to enable live quiz generation",
       });
     }
 
-    const questions = await generateQuiz(content, gradeLevel, questionCount);
+    const questions = await generateQuizFromSaved(
+      contents,
+      gradeLevel,
+      questionCount
+    );
 
     return NextResponse.json({
-      quizId: `quiz-${contentId}-${Date.now()}`,
-      contentId,
-      title: `${content.topics[0]} Quiz — ${content.character.name}`,
-      gradeLevel: content.gradeLevel,
+      title: quizTitleForTopic(topic, contents.length),
+      gradeLevel,
       questions,
       fallback: false,
     });

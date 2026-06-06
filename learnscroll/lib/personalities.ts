@@ -1,4 +1,5 @@
 import type { AICharacter, GradeLevel, Topic } from "./types";
+import { PERSONALITIES_BY_GRADE } from "./grade-config";
 
 export interface Personality extends AICharacter {
   posterAsset: "newton" | "einstein" | "einstein-cartoon" | "sunny";
@@ -16,8 +17,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "N",
     color: "#A8C8FF",
     posterAsset: "newton",
-    voicePitch: 0.78,
-    voiceRate: 0.92,
+    voicePitch: 0.72,
+    voiceRate: 0.84,
     voiceGender: "male",
   },
   {
@@ -28,8 +29,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "E",
     color: "#D4C4F0",
     posterAsset: "einstein",
-    voicePitch: 0.88,
-    voiceRate: 0.96,
+    voicePitch: 0.95,
+    voiceRate: 0.9,
     voiceGender: "male",
   },
   {
@@ -40,8 +41,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "C",
     color: "#E8D4F0",
     posterAsset: "einstein",
-    voicePitch: 1.12,
-    voiceRate: 0.94,
+    voicePitch: 1.06,
+    voiceRate: 0.88,
     voiceGender: "female",
   },
   {
@@ -52,8 +53,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "D",
     color: "#B8E8D0",
     posterAsset: "newton",
-    voicePitch: 0.82,
-    voiceRate: 0.9,
+    voicePitch: 0.76,
+    voiceRate: 0.86,
     voiceGender: "male",
   },
   {
@@ -64,8 +65,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "E",
     color: "#FFD6A5",
     posterAsset: "newton",
-    voicePitch: 0.86,
-    voiceRate: 1.0,
+    voicePitch: 0.88,
+    voiceRate: 1.06,
     voiceGender: "male",
   },
   {
@@ -76,8 +77,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "H",
     color: "#C4E0FF",
     posterAsset: "einstein-cartoon",
-    voicePitch: 1.1,
-    voiceRate: 0.95,
+    voicePitch: 1.12,
+    voiceRate: 0.92,
     voiceGender: "female",
   },
   {
@@ -88,8 +89,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "T",
     color: "#D4E8FF",
     posterAsset: "einstein",
-    voicePitch: 0.9,
-    voiceRate: 1.02,
+    voicePitch: 1.0,
+    voiceRate: 1.08,
     voiceGender: "male",
   },
   {
@@ -100,8 +101,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "T",
     color: "#FFE4B8",
     posterAsset: "newton",
-    voicePitch: 0.84,
-    voiceRate: 0.98,
+    voicePitch: 0.92,
+    voiceRate: 1.04,
     voiceGender: "male",
   },
   {
@@ -112,8 +113,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "A",
     color: "#E8E0D4",
     posterAsset: "newton",
-    voicePitch: 0.8,
-    voiceRate: 0.88,
+    voicePitch: 0.68,
+    voiceRate: 0.8,
     voiceGender: "male",
   },
   {
@@ -124,8 +125,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "S",
     color: "#FFD6D6",
     posterAsset: "einstein-cartoon",
-    voicePitch: 0.87,
-    voiceRate: 0.86,
+    voicePitch: 0.82,
+    voiceRate: 0.78,
     voiceGender: "male",
   },
   {
@@ -136,8 +137,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "C",
     color: "#F0D4E8",
     posterAsset: "einstein-cartoon",
-    voicePitch: 1.08,
-    voiceRate: 0.93,
+    voicePitch: 1.18,
+    voiceRate: 0.9,
     voiceGender: "female",
   },
   {
@@ -148,8 +149,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "S",
     color: "#B8E8D0",
     posterAsset: "sunny",
-    voicePitch: 1.18,
-    voiceRate: 1.05,
+    voicePitch: 1.28,
+    voiceRate: 1.12,
     voiceGender: "neutral",
   },
 ];
@@ -168,14 +169,13 @@ const TOPIC_PERSONALITY_IDS: Record<Topic, string[]> = {
 let pickCounter = 0;
 
 export function pickPersonality(topic: Topic, gradeLevel: GradeLevel): Personality {
-  if (gradeLevel === "K-5" || gradeLevel === "6-8") {
-    const kid = PERSONALITIES.find((p) => p.id === "sunny");
-    if (kid && (topic === "biology" || topic === "history" || topic === "math")) {
-      return kid;
-    }
-  }
+  const gradePool = PERSONALITIES_BY_GRADE[gradeLevel]?.[topic];
+  const ids =
+    gradePool ??
+    PERSONALITIES_BY_GRADE["9-12"]?.[topic] ??
+    TOPIC_PERSONALITY_IDS[topic] ??
+    ["einstein"];
 
-  const ids = TOPIC_PERSONALITY_IDS[topic] ?? ["einstein"];
   const id = ids[Math.floor(Math.random() * ids.length)];
   pickCounter += 1;
   return PERSONALITIES.find((p) => p.id === id) ?? PERSONALITIES[0];
@@ -184,3 +184,31 @@ export function pickPersonality(topic: Topic, gradeLevel: GradeLevel): Personali
 export function getPersonality(id: string): Personality {
   return PERSONALITIES.find((p) => p.id === id) ?? PERSONALITIES[0];
 }
+
+/** Visual identity hints so Gemini draws the correct historical figure */
+export const PERSONALITY_PORTRAIT_HINTS: Record<string, string> = {
+  newton:
+    "Isaac Newton — 17th-century scholar, long curly wig, dark coat, serious thoughtful expression",
+  einstein:
+    "Albert Einstein — iconic wild white hair, mustache, warm eyes, simple sweater or shirt",
+  curie:
+    "Marie Curie — woman, hair in a bun, modest Victorian dress, calm determined expression",
+  darwin:
+    "Charles Darwin — full Victorian beard, receding hair, earth-tone coat, wise gentle face",
+  euler:
+    "Leonhard Euler — 18th-century European scholar, powdered wig, formal coat, intelligent gaze",
+  hypatia:
+    "Hypatia of Alexandria — ancient Greek woman, classical draped robes, serene intelligent face",
+  turing:
+    "Alan Turing — 1940s British man, neat brown hair, tweed jacket, quiet focused expression",
+  tesla:
+    "Nikola Tesla — tall slim man, neat mustache, slick dark hair, formal Victorian suit, intense eyes",
+  aristotle:
+    "Aristotle — ancient Greek philosopher, full beard, classical robes, thoughtful authoritative face",
+  shakespeare:
+    "William Shakespeare — Elizabethan poet, ruff collar, goatee, expressive literary face",
+  cleopatra:
+    "Cleopatra VII — Egyptian queen, regal gold jewelry and headdress, dignified stylized portrait",
+  sunny:
+    "Sunny & Jo — two cheerful cartoon kids (boy and girl), bright friendly faces, simple colorful clothes",
+};

@@ -34,8 +34,6 @@ export async function POST(req: NextRequest) {
 
     const posterUrl = await generatePortraitByCharacterId(
       body.characterId,
-      body.topic,
-      body.title,
       body.gradeLevel
     );
 

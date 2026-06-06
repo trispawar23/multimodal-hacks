@@ -1,11 +1,12 @@
 import type { GradeLevel, Topic } from "./types";
 import type { Personality } from "./personalities";
+import {
+  pickVoicedTemplate,
+  type SlopTemplate,
+} from "./character-script";
+import { gradeFallbackOrder } from "./grade-config";
 
-export interface SlopTemplate {
-  title: string;
-  transcript: string;
-  qualityScore: number;
-}
+export type { SlopTemplate };
 
 type TemplateBank = Partial<
   Record<Topic, Partial<Record<GradeLevel, SlopTemplate[]>>>
@@ -229,28 +230,34 @@ const BANK: TemplateBank = {
   },
 };
 
-export function pickTemplate(
+export function pickGenericTemplate(
   topic: Topic,
-  gradeLevel: GradeLevel,
-  personality: Personality
+  gradeLevel: GradeLevel
 ): SlopTemplate {
   const byTopic = BANK[topic];
   const fallback: SlopTemplate = {
-    title: `${personality.name} teaches ${topic}`,
-    transcript: `Here's something important about ${topic} — a idea worth carrying with you after this lesson ends.`,
+    title: `A lesson on ${topic}`,
+    transcript:
+      "This concept connects ideas you will meet again and again — worth understanding clearly before moving on.",
     qualityScore: 0.85,
   };
 
   if (!byTopic) return fallback;
 
-  const pool =
-    byTopic[gradeLevel] ??
-    byTopic["9-12"] ??
-    byTopic["6-8"] ??
-    byTopic["K-5"] ??
-    byTopic.college ??
-    [];
+  for (const grade of gradeFallbackOrder(gradeLevel)) {
+    const pool = byTopic[grade];
+    if (pool?.length) {
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+  }
 
-  if (!pool.length) return fallback;
-  return pool[Math.floor(Math.random() * pool.length)];
+  return fallback;
+}
+
+export function pickTemplate(
+  topic: Topic,
+  gradeLevel: GradeLevel,
+  personality: Personality
+): SlopTemplate {
+  return pickVoicedTemplate(pickGenericTemplate, topic, gradeLevel, personality);
 }

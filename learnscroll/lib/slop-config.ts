@@ -1,6 +1,10 @@
 import { CHARACTERS } from "./mock-data";
-import { TOPIC_LABELS } from "./grade-topics";
 import type { AICharacter, GradeLevel, PortraitStyle, Topic } from "./types";
+import {
+  PERSONALITY_PORTRAIT_HINTS,
+  type Personality,
+} from "./personalities";
+import { GRADE_PORTRAIT_HINT, GRADE_LABEL_SHORT } from "./grade-config";
 
 export interface CharacterAssets {
   posterUrl: string;
@@ -65,46 +69,41 @@ export function getCharacterAssets(characterId: string): CharacterAssets {
   return CHARACTER_ASSETS[characterId] ?? CHARACTER_ASSETS["einstein-cartoon"];
 }
 
-const PORTRAIT_STYLE_DESC: Record<PortraitStyle, string> = {
-  realistic:
-    "photorealistic cinematic talking-head portrait, soft studio lighting, lifelike skin",
-  illustration:
-    "warm hand-drawn cartoon illustration, friendly educational app style, soft pastels",
-  "3d": "vibrant Pixar-style 3D character portrait, cheerful kids show aesthetic",
-};
-
-const TOPIC_VISUAL_HINTS: Partial<Record<Topic, string>> = {
-  physics: "subtle abstract motion or light rays, no equations with readable text",
-  math: "soft geometric shapes in background, no readable numbers",
-  chemistry: "glassware and soft violet glow, laboratory atmosphere",
-  biology: "gentle leaf or cell motifs, organic greens",
-  history: "warm antique tones, subtle map texture without labels",
-  literature: "quill or open book props, no readable pages",
-  philosophy: "marble column bokeh, thoughtful atmosphere",
-  engineering: "gears or blueprint texture, no readable plans",
-};
-
-export function buildPortraitPrompt(
-  characterName: string,
-  era: string,
-  topic: Topic,
-  title: string,
-  portraitStyle: PortraitStyle,
+/** Fast illustrated fallback — always cartoon/3D, never heavy realistic PNGs */
+export function getIllustratedAssets(
+  posterAsset: string,
   gradeLevel: GradeLevel
+): CharacterAssets {
+  if (gradeLevel === "K-5" || gradeLevel === "6-8") {
+    return CHARACTER_ASSETS.sunny;
+  }
+  if (posterAsset === "sunny") return CHARACTER_ASSETS.sunny;
+  return CHARACTER_ASSETS["einstein-cartoon"];
+}
+
+export const AI_PORTRAIT_STYLE: PortraitStyle = "illustration";
+
+/** Portrait prompt — personality only, styled for grade band */
+export function buildPortraitPrompt(
+  personality: Personality,
+  gradeLevel: GradeLevel = "9-12"
 ): string {
-  const style = PORTRAIT_STYLE_DESC[portraitStyle];
-  const topicLabel = TOPIC_LABELS[topic];
-  const visual = TOPIC_VISUAL_HINTS[topic] ?? "soft educational atmosphere";
+  const look =
+    PERSONALITY_PORTRAIT_HINTS[personality.id] ??
+    `${personality.name} (${personality.era}), historically recognizable likeness`;
+  const gradeHint = GRADE_PORTRAIT_HINT[gradeLevel] ?? GRADE_PORTRAIT_HINT["9-12"];
+  const audience = GRADE_LABEL_SHORT[gradeLevel] ?? "students";
 
   return [
-    "Generate a single portrait image.",
-    "Vertical 9:16 mobile video still, chest-up, eye contact with camera.",
-    style,
-    `Depict ${characterName} (${era}), famous expert in ${topicLabel}.`,
-    `They are teaching a ${gradeLevel} level lesson about ${topicLabel}.`,
-    `Lesson mood inspired by: ${title}.`,
-    visual,
-    "Soft pastel cream background.",
-    "CRITICAL RULES: absolutely NO text, letters, numbers, captions, subtitles, logos, watermarks, UI, or readable writing anywhere in the image.",
+    "Single character portrait only. One person centered in frame.",
+    "Flat cartoon illustration, friendly mobile educational app style.",
+    "Vertical 9:16, chest-up, plain solid pastel cream background.",
+    `Draw ONLY ${personality.name} (${personality.era}).`,
+    `Appearance: ${look}.`,
+    `Style for ${audience}: ${gradeHint}.`,
+    `Must be unmistakably ${personality.name} — not Einstein, not Newton, not any other figure.`,
+    "No props, no classroom, no chalkboard, no books, no lab equipment, no topic symbols, no scenery.",
+    "No other people. Character fills the frame.",
+    "NO text, NO letters, NO numbers, NO labels, NO watermarks, NO photorealism.",
   ].join(" ");
 }

@@ -14,7 +14,7 @@ import {
 } from "@google/generative-ai";
 import { CHARACTERS } from "./mock-data";
 import type { QuizQuestion, ContentItem, GradeLevel, Topic } from "./types";
-import { getCharacterAssets, pickCharacterForTopic, buildPortraitPrompt } from "./slop-config";
+import { getIllustratedAssets, pickCharacterForTopic, buildPortraitPrompt } from "./slop-config";
 import { getPersonality, pickPersonality, type Personality } from "./personalities";
 
 function getClient() {
@@ -133,31 +133,130 @@ Rules:
   return JSON.parse(result.response.text()) as QuizQuestion[];
 }
 
+export async function generateQuizFromSaved(
+  items: ContentItem[],
+  gradeLevel: GradeLevel,
+  questionCount = 5
+): Promise<QuizQuestion[]> {
+  const genAI = getClient();
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    safetySettings: SAFETY_SETTINGS,
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.4,
+    },
+  });
+
+  const contentBlock = items
+    .map(
+      (item, i) =>
+        `### Saved lesson ${i + 1}: ${item.title}\nTeacher: ${item.character.name}\nTopics: ${item.topics.join(", ")}\nTranscript: ${item.transcript}`
+    )
+    .join("\n\n");
+
+  const prompt = `
+Generate ${questionCount} multiple-choice quiz questions based ONLY on the saved lessons below.
+Do NOT invent facts not present in the transcripts.
+Calibrate difficulty for grade level: ${gradeLevel}.
+
+${contentBlock}
+
+Respond ONLY with a JSON array of objects matching this schema:
+[{
+  "id": "<string uuid>",
+  "question": "<question text>",
+  "options": ["<A>", "<B>", "<C>", "<D>"],
+  "correctIndex": <0-3>,
+  "explanation": "<1-2 sentence explanation grounded in the saved transcripts>"
+}]
+
+Rules:
+- Questions should cover the saved topics the student studied
+- All correct answers must be supported by the transcripts above
+- Mix questions across lessons when multiple are provided
+- No trick questions
+`;
+
+  const result = await model.generateContent(prompt);
+  return JSON.parse(result.response.text()) as QuizQuestion[];
+}
+
 // ─── Character persona system prompt ──────────────────────────────────────
 
 export function buildCharacterSystemPrompt(
   characterName: string,
   era: string,
-  subject: string,
+  subjects: string,
   gradeLevel: GradeLevel,
+  contentTitle: string,
   contentTranscript: string
 ): string {
-  return `You are ${characterName} (${era}), speaking to a student at grade level ${gradeLevel}.
+  return `You are ${characterName} (${era}), speaking live with a student at grade level ${gradeLevel}.
 
-You are deeply knowledgeable about ${subject}. Speak in first person as ${characterName}.
-Use period-appropriate vocabulary but remain understandable to a modern student.
+You are deeply knowledgeable about ${subjects}. Speak in first person as ${characterName}.
+Use period-appropriate vocabulary but remain understandable to a modern ${gradeLevel} student.
 
-GROUND YOUR ANSWERS in this content the student just watched:
+The student just watched your reel: "${contentTitle}"
 ---
 ${contentTranscript}
 ---
 
+You may answer questions about:
+- This topic and your field of expertise (${subjects})
+- Your life, discoveries, era, rivals, and worldview
+- How your ideas connect to the reel they watched
+- Deeper or simpler explanations of what you taught
+
 RULES:
-1. If asked something outside the content or your historical expertise, say "I'm afraid that falls outside my knowledge."
-2. Never claim to know things ${characterName} could not have known (events after ${era.split("–")[1] ?? "your death"}).
-3. Always prioritize accuracy over persona — if staying in character would require saying something factually wrong, break character and say "As an AI character: [correct answer]."
-4. Keep responses concise — 2-4 sentences. Students are watching on mobile.
-5. You are an AI educational character. If asked directly, confirm this.`;
+1. Answer in 2–4 concise sentences — mobile-friendly, conversational.
+2. For life and biography questions, share details ${characterName} would plausibly know about themselves.
+3. Never claim knowledge of events after ${era.split("–").pop()?.replace(/[^0-9]/g, "") ? "your era ended" : "your death"} unless clarifying you speak as an AI character looking back.
+4. If a question is outside your expertise, say so briefly and redirect to what you do know.
+5. Prioritize accuracy — if persona would require a false claim, say "As an AI character: [correct answer]."
+6. You are an AI educational character of ${characterName}. Confirm if asked directly.`;
+}
+
+export interface VoiceTurn {
+  role: "user" | "character";
+  text: string;
+}
+
+export async function generateCharacterReply(
+  characterId: string,
+  question: string,
+  context: {
+    title: string;
+    transcript: string;
+    gradeLevel: GradeLevel;
+    topics: Topic[];
+  },
+  history: VoiceTurn[] = []
+): Promise<string> {
+  const personality = getPersonality(characterId);
+  const genAI = getClient();
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    safetySettings: SAFETY_SETTINGS,
+    generationConfig: { temperature: 0.75, maxOutputTokens: 280 },
+    systemInstruction: buildCharacterSystemPrompt(
+      personality.name,
+      personality.era,
+      personality.subjects.join(", "),
+      context.gradeLevel,
+      context.title,
+      context.transcript
+    ),
+  });
+
+  const chatHistory = history.slice(-8).map((turn) => ({
+    role: turn.role === "user" ? ("user" as const) : ("model" as const),
+    parts: [{ text: turn.text }],
+  }));
+
+  const chat = model.startChat({ history: chatHistory });
+  const result = await chat.sendMessage(question);
+  return result.response.text().trim();
 }
 
 // ─── Book compilation prompt ───────────────────────────────────────────────
@@ -275,19 +374,9 @@ Rules:
 
 export async function generatePortraitImage(
   personality: Personality,
-  topic: Topic,
-  title: string,
-  gradeLevel: GradeLevel
+  gradeLevel: GradeLevel = "9-12"
 ): Promise<string> {
-  const assets = getCharacterAssets(personality.posterAsset);
-  const prompt = buildPortraitPrompt(
-    personality.name,
-    personality.era,
-    topic,
-    title,
-    assets.portraitStyle,
-    gradeLevel
-  );
+  const prompt = buildPortraitPrompt(personality, gradeLevel);
 
   const models = ["gemini-2.5-flash-image", "gemini-2.0-flash-preview-image-generation"];
   let lastError: Error | null = null;
@@ -321,10 +410,8 @@ export async function generatePortraitImage(
 
 export async function generatePortraitByCharacterId(
   characterId: string,
-  topic: Topic,
-  title: string,
-  gradeLevel: GradeLevel
+  gradeLevel: GradeLevel = "9-12"
 ): Promise<string> {
   const personality = getPersonality(characterId);
-  return generatePortraitImage(personality, topic, title, gradeLevel);
+  return generatePortraitImage(personality, gradeLevel);
 }

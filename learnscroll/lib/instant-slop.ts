@@ -1,4 +1,4 @@
-import { getCharacterAssets } from "./slop-config";
+import { getIllustratedAssets } from "./slop-config";
 import { pickPersonality } from "./personalities";
 import { pickTemplate } from "./slop-templates";
 import { topicAllowedForGrade, topicsForGrade } from "./grade-topics";
@@ -12,7 +12,7 @@ export function generateInstantSlop(
 ): ContentItem {
   const personality = pickPersonality(topic, gradeLevel);
   const template = pickTemplate(topic, gradeLevel, personality);
-  const assets = getCharacterAssets(personality.posterAsset);
+  const assets = getIllustratedAssets(personality.posterAsset, gradeLevel);
 
   return {
     id: `instant-${++idCounter}-${Date.now()}`,
@@ -27,7 +27,7 @@ export function generateInstantSlop(
     thumbnailColor: assets.thumbnailColor,
     posterUrl: "",
     talkingPortrait: true,
-    portraitStyle: assets.portraitStyle,
+    portraitStyle: "illustration",
     durationSec: Math.max(
       30,
       Math.min(90, Math.round(template.transcript.split(/\s+/).length / 2.5))
@@ -35,6 +35,7 @@ export function generateInstantSlop(
     viewCount: Math.floor(Math.random() * 50000) + 8000,
     generated: true,
     imagePending: true,
+    wantAiPortrait: true,
   };
 }
 

@@ -39,6 +39,8 @@ export interface ContentItem {
   thumbnailColor: string;
   posterUrl: string;
   videoUrl?: string;
+  /** Optional AI-generated portrait layered over posterUrl */
+  aiPosterUrl?: string;
   talkingPortrait?: boolean;
   /** Visual style of the personality portrait */
   portraitStyle?: PortraitStyle;
@@ -48,6 +50,8 @@ export interface ContentItem {
   generated?: boolean;
   /** Waiting for Gemini portrait */
   imagePending?: boolean;
+  /** Static portrait shown; eligible for optional AI upgrade */
+  wantAiPortrait?: boolean;
 }
 
 export interface QuizQuestion {
