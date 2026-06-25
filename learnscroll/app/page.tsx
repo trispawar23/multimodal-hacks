@@ -7,39 +7,67 @@ import { TopicFilterBar } from "@/components/TopicFilterBar";
 import { GradeSelector } from "@/components/GradeSelector";
 import { PageShell } from "@/components/layout/PageShell";
 import {
-  generateInstantFeed,
-  generateInstantSlop,
+  createFeedRecent,
+  createPlaceholderFeed,
+  createPlaceholderReel,
+  pickTopicForFeed,
   preloadPortraits,
+  type FeedRecent,
 } from "@/lib/instant-slop";
-import { topicAllowedForGrade, topicsForGrade } from "@/lib/grade-topics";
-import { preloadVoices, stopCharacterSpeech } from "@/lib/character-voice";
-import { stopGeminiVoice } from "@/lib/gemini-voice-client";
-import { readFeedMuted, writeFeedMuted, readSavedGrade, writeSavedGrade, unlockFeedSpeech } from "@/lib/feed-audio";
 import {
+  recordCharacter,
+  recordConcept,
+  recordPortraitVariant,
+  recordPortraitUrl,
+  recordTopicCharacter,
+  recentCharactersForHydrate,
+  recentConceptsForHydrate,
+  recentFigureNamesForHydrate,
+  conceptKey,
+} from "@/lib/feed-diversity";
+import { fetchWebReel } from "@/lib/feed-client";
+import { buildInlineFallbackReel } from "@/lib/feed-fallback";
+import { pickPersonality } from "@/lib/personalities";
+import { topicAllowedForGrade } from "@/lib/grade-topics";
+import { preloadVoices } from "@/lib/character-voice";
+import { stopAllCharacterSpeech } from "@/lib/voice-playback";
+import {
+  readFeedMuted,
+  writeFeedMuted,
+  readSavedGrade,
+  writeSavedGrade,
+  unlockFeedSpeech,
+} from "@/lib/feed-audio";
+import {
+  clearPortraitCache,
+  clearWebPortraitCache,
   fetchPortraitForItem,
+  forgetCachedPortrait,
   getCachedPortrait,
 } from "@/lib/portrait-client";
 import { getSavedIds, saveContent, toggleSaveContent } from "@/lib/saved-store";
+import { isCharacterPortraitUrl, isPortraitUrlForCharacter } from "@/lib/portrait-validation";
+import {
+  loadSessionConcepts,
+  mergeConceptExcludes,
+  persistSessionConcept,
+  sessionScrollOffset,
+} from "@/lib/session-concepts";
 import type { ContentItem, GradeLevel, Topic } from "@/lib/types";
 
-/** Start Gemini portrait as soon as a reel is in view */
-const AI_PORTRAIT_DELAY_MS = 0;
+const PORTRAIT_FETCH_DELAY_MS = 0;
+const DEFAULT_GRADE: GradeLevel = "9-12";
 
 export default function FeedPage() {
   const router = useRouter();
-  const [gradeLevel, setGradeLevel] = useState<GradeLevel>(() => {
-    if (typeof window !== "undefined") return readSavedGrade() ?? "9-12";
-    return "9-12";
-  });
+
+  const [gradeLevel, setGradeLevel] = useState<GradeLevel>(DEFAULT_GRADE);
   const [topicFilter, setTopicFilter] = useState<Topic | "all">("all");
-  const [feedItems, setFeedItems] = useState<ContentItem[]>(() => {
-    const grade =
-      typeof window !== "undefined" ? readSavedGrade() ?? "9-12" : "9-12";
-    return generateInstantFeed("all", grade, 4);
-  });
+  const [feedItems, setFeedItems] = useState<ContentItem[]>([]);
   const mainRef = useRef<HTMLElement>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => getSavedIds());
   const [muted, setMuted] = useState(false);
+  const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
   const feedItemsRef = useRef(feedItems);
@@ -47,9 +75,23 @@ export default function FeedPage() {
   const portraitInflightRef = useRef<string | null>(null);
   const pendingPortraitIdRef = useRef<string | null>(null);
   const attemptedPortraitRef = useRef<Set<string>>(new Set());
+  const portraitFailuresRef = useRef<Map<string, number>>(new Map());
+  const hydrateInflightRef = useRef<Set<string>>(new Set());
+  const hydrateQueueRef = useRef<string[]>([]);
+  const MAX_PARALLEL_HYDRATE = 2;
+  const attemptedHydrateRef = useRef<Set<string>>(new Set());
   const visibleReelIdRef = useRef<string | null>(null);
-  const skippedInitialRebuildRef = useRef(false);
+  const feedRecentRef = useRef<FeedRecent>(createFeedRecent());
+  const feedSequenceRef = useRef(0);
+  const topicFilterRef = useRef(topicFilter);
+  const skipNextFilterRebuildRef = useRef(false);
+  const skipInitialFilterEffectRef = useRef(true);
+  const hydrateWebReelRef = useRef<(shell: ContentItem) => void>(() => {});
+  const hydrateRetriesRef = useRef<Map<string, number>>(new Map());
+  const pendingConceptsRef = useRef<string[]>([]);
+  const pendingCharactersRef = useRef<string[]>([]);
   feedItemsRef.current = feedItems;
+  topicFilterRef.current = topicFilter;
 
   useEffect(() => {
     preloadPortraits();
@@ -66,27 +108,33 @@ export default function FeedPage() {
     };
   }, []);
 
-  function handleGradeChange(grade: GradeLevel) {
-    setGradeLevel(grade);
-    writeSavedGrade(grade);
-    stopCharacterSpeech();
-    mainRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  }
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const primeOnGesture = () => unlockFeedSpeech();
+    main.addEventListener("scroll", primeOnGesture, { passive: true });
+    main.addEventListener("touchstart", primeOnGesture, { passive: true });
+    return () => {
+      main.removeEventListener("scroll", primeOnGesture);
+      main.removeEventListener("touchstart", primeOnGesture);
+    };
+  }, []);
 
   function handleToggleMute() {
     setMuted((prev) => {
       const next = !prev;
       writeFeedMuted(next);
       if (next) {
-        stopCharacterSpeech();
-        stopGeminiVoice();
+        stopAllCharacterSpeech();
       }
       return next;
     });
   }
 
   const lazyUpgradePortrait = useCallback((item: ContentItem) => {
-    if (!item.wantAiPortrait || item.aiPosterUrl) return;
+    if (item.enrichPending || item.character.id === "loading") return;
+    const needsPortrait = item.wantAiPortrait || !item.posterUrl;
+    if (!needsPortrait) return;
     if (attemptedPortraitRef.current.has(item.id)) return;
 
     if (portraitInflightRef.current) {
@@ -95,14 +143,14 @@ export default function FeedPage() {
     }
 
     const cached = getCachedPortrait(item);
-    if (cached) {
+    if (cached && isCharacterPortraitUrl(item.character.id, cached, item.character.name)) {
       attemptedPortraitRef.current.add(item.id);
       setFeedItems((prev) =>
         prev.map((i) =>
-          i.id === item.id
+          i.id === item.id && i.character.id === item.character.id
             ? {
                 ...i,
-                aiPosterUrl: cached,
+                posterUrl: cached,
                 wantAiPortrait: false,
                 imagePending: false,
               }
@@ -115,24 +163,50 @@ export default function FeedPage() {
     portraitInflightRef.current = item.id;
 
     fetchPortraitForItem(item)
-      .then(({ posterUrl, fallback }) => {
-        if (fallback || !posterUrl.startsWith("data:")) return;
-        attemptedPortraitRef.current.add(item.id);
+      .then(({ posterUrl }) => {
+        if (!posterUrl || !isPortraitUrlForCharacter(item.character.id, posterUrl, item.character.name)) {
+          attemptedPortraitRef.current.add(item.id);
+          setFeedItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id && i.character.id === item.character.id
+                ? { ...i, wantAiPortrait: false, imagePending: false }
+                : i
+            )
+          );
+          return;
+        }
+        const isFinalPortrait = isCharacterPortraitUrl(item.character.id, posterUrl, item.character.name);
+        const current = feedItemsRef.current.find((i) => i.id === item.id);
+        if (!current || current.character.id !== item.character.id) return;
+        if (isFinalPortrait) {
+          attemptedPortraitRef.current.add(item.id);
+        }
         setFeedItems((prev) =>
           prev.map((i) =>
-            i.id === item.id
+            i.id === item.id && i.character.id === item.character.id
               ? {
                   ...i,
-                  aiPosterUrl: posterUrl,
-                  wantAiPortrait: false,
+                  posterUrl,
+                  wantAiPortrait: !isFinalPortrait,
                   imagePending: false,
                 }
               : i
           )
         );
+        if (isFinalPortrait) {
+          recordPortraitUrl(feedRecentRef.current, posterUrl);
+        }
       })
       .catch((err) => {
         console.warn("Portrait generation failed for", item.id, err);
+        attemptedPortraitRef.current.add(item.id);
+        setFeedItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id
+              ? { ...i, wantAiPortrait: false, imagePending: false }
+              : i
+          )
+        );
       })
       .finally(() => {
         if (portraitInflightRef.current === item.id) {
@@ -143,19 +217,344 @@ export default function FeedPage() {
         if (pending && pending !== item.id) {
           const next = feedItemsRef.current.find((i) => i.id === pending);
           if (next) lazyUpgradePortrait(next);
-        } else if (
-          visibleReelIdRef.current &&
-          visibleReelIdRef.current !== item.id
-        ) {
-          const visible = feedItemsRef.current.find(
-            (i) => i.id === visibleReelIdRef.current
-          );
-          if (visible && !attemptedPortraitRef.current.has(visible.id)) {
+        }
+        const visibleId = visibleReelIdRef.current;
+        if (visibleId) {
+          const visible = feedItemsRef.current.find((i) => i.id === visibleId);
+          if (
+            visible &&
+            visible.wantAiPortrait &&
+            !attemptedPortraitRef.current.has(visibleId)
+          ) {
             lazyUpgradePortrait(visible);
           }
         }
       });
   }, []);
+
+  const handlePortraitBroken = useCallback((itemId: string) => {
+    const item = feedItemsRef.current.find((i) => i.id === itemId);
+    if (!item || item.enrichPending || item.character.id === "loading") return;
+
+    const failures = (portraitFailuresRef.current.get(itemId) ?? 0) + 1;
+    portraitFailuresRef.current.set(itemId, failures);
+    if (failures > 4) return;
+
+    forgetCachedPortrait(item);
+    attemptedPortraitRef.current.delete(itemId);
+    const nextVariant = (item.portraitVariant ?? 0) + 1;
+
+    setFeedItems((prev) =>
+      prev.map((i) =>
+        i.id === itemId
+          ? {
+              ...i,
+              posterUrl: "",
+              portraitVariant: nextVariant,
+              wantAiPortrait: true,
+              imagePending: true,
+            }
+          : i
+      )
+    );
+
+    const retryItem: ContentItem = {
+      ...item,
+      portraitVariant: nextVariant,
+      posterUrl: "",
+      wantAiPortrait: true,
+      imagePending: true,
+    };
+
+    fetchPortraitForItem(retryItem)
+      .then(({ posterUrl }) => {
+        if (!posterUrl || !isPortraitUrlForCharacter(item.character.id, posterUrl, item.character.name)) {
+          return;
+        }
+        setFeedItems((prev) =>
+          prev.map((i) =>
+            i.id === itemId && i.character.id === item.character.id
+              ? {
+                  ...i,
+                  posterUrl,
+                  portraitVariant: nextVariant,
+                  wantAiPortrait: false,
+                  imagePending: false,
+                }
+              : i
+          )
+        );
+        recordPortraitUrl(feedRecentRef.current, posterUrl);
+      })
+      .catch((err) => {
+        console.warn("Portrait retry failed for", itemId, err);
+      });
+  }, []);
+
+  const hydrateWebReel = useCallback(
+    (shell: ContentItem) => {
+      if (!shell.enrichPending) return;
+      if (attemptedHydrateRef.current.has(shell.id)) return;
+
+      if (hydrateInflightRef.current.has(shell.id)) return;
+
+      if (hydrateInflightRef.current.size >= MAX_PARALLEL_HYDRATE) {
+        if (!hydrateQueueRef.current.includes(shell.id)) {
+          hydrateQueueRef.current.push(shell.id);
+        }
+        return;
+      }
+
+      const topic = shell.topics[0];
+      if (!topic) return;
+
+      hydrateInflightRef.current.add(shell.id);
+
+      const runQueued = () => {
+        while (
+          hydrateInflightRef.current.size < MAX_PARALLEL_HYDRATE &&
+          hydrateQueueRef.current.length > 0
+        ) {
+          const nextId = hydrateQueueRef.current.shift();
+          if (!nextId) break;
+          const next = feedItemsRef.current.find((i) => i.id === nextId);
+          if (next?.enrichPending && !attemptedHydrateRef.current.has(nextId)) {
+            hydrateWebReel(next);
+            break;
+          }
+        }
+      };
+
+      const retryAttempt = hydrateRetriesRef.current.get(shell.id) ?? 0;
+      const lightExclude = retryAttempt >= 1;
+
+      const recentForPick = recentCharactersForHydrate(
+        feedRecentRef.current,
+        topic,
+        feedItemsRef.current,
+        pendingCharactersRef.current
+      );
+
+      const reserved = pickPersonality(
+        topic,
+        shell.gradeLevel,
+        recentForPick,
+        shell.scrollIndex ?? 0,
+        feedRecentRef.current
+      );
+
+      pendingCharactersRef.current = [
+        reserved.id,
+        ...pendingCharactersRef.current.filter((id) => id !== reserved.id),
+      ];
+
+      fetchWebReel({
+        topic,
+        gradeLevel: shell.gradeLevel,
+        scrollIndex: shell.scrollIndex ?? 0,
+        preferredCharacterId: reserved.id,
+        recentCharacterIds: recentForPick,
+        recentFigureNames: lightExclude
+          ? []
+          : recentFigureNamesForHydrate(
+              feedRecentRef.current,
+              topic,
+              feedItemsRef.current
+            ),
+        recentConcepts: lightExclude
+          ? []
+          : mergeConceptExcludes(
+              topic,
+              recentConceptsForHydrate(
+                feedRecentRef.current,
+                topic,
+                feedItemsRef.current,
+                pendingConceptsRef.current
+              ),
+              pendingConceptsRef.current
+            ),
+        recentPortraitUrls: lightExclude ? [] : feedRecentRef.current.portraitUrls,
+        topicCharacterHistory: feedRecentRef.current.topicCharacterHistory,
+      })
+        .then((result) => {
+          const conceptReservation = conceptKey(topic, result.wikiTitle);
+          pendingConceptsRef.current = [
+            conceptReservation,
+            ...pendingConceptsRef.current.filter((k) => k !== conceptReservation),
+          ];
+          pendingCharactersRef.current = [
+            result.characterId,
+            ...pendingCharactersRef.current.filter((id) => id !== result.characterId),
+          ];
+          recordConcept(feedRecentRef.current, topic, result.wikiTitle);
+          persistSessionConcept(topic, result.wikiTitle, result.characterId);
+
+          attemptedPortraitRef.current.delete(shell.id);
+          portraitFailuresRef.current.delete(shell.id);
+          attemptedHydrateRef.current.add(shell.id);
+          hydrateRetriesRef.current.delete(shell.id);
+          recordCharacter(
+            feedRecentRef.current,
+            result.characterId,
+            result.character.name
+          );
+          recordTopicCharacter(feedRecentRef.current, topic, result.characterId);
+          recordPortraitVariant(
+            feedRecentRef.current,
+            topic,
+            result.characterId,
+            result.portraitVariant
+          );
+
+          const posterUrl =
+            result.posterUrl &&
+            isPortraitUrlForCharacter(
+              result.characterId,
+              result.posterUrl,
+              result.character.name
+            )
+              ? result.posterUrl
+              : "";
+
+          const hasCharacterPortrait =
+            Boolean(posterUrl) &&
+            isCharacterPortraitUrl(
+              result.characterId,
+              posterUrl,
+              result.character.name
+            );
+
+          if (posterUrl) {
+            recordPortraitUrl(feedRecentRef.current, posterUrl);
+          }
+
+          const portraitStyle =
+            result.characterId === "sunny" ||
+            result.characterId === "einstein-cartoon"
+              ? "illustration"
+              : "realistic";
+
+          setFeedItems((prev) =>
+            prev.map((i) =>
+              i.id === shell.id
+                ? {
+                    ...i,
+                    title: result.title,
+                    transcript: result.transcript,
+                    sourceUrl: result.sourceUrl,
+                    posterUrl,
+                    wikiTitle: result.wikiTitle,
+                    character: result.character,
+                    thumbnailColor: result.character.color,
+                    portraitStyle,
+                    portraitVariant: result.portraitVariant,
+                    qualityScore: result.qualityScore,
+                    enrichPending: false,
+                    imagePending: false,
+                    wantAiPortrait: !posterUrl,
+                  }
+                : i
+            )
+          );
+
+          lazyUpgradePortrait({
+            ...shell,
+            title: result.title,
+            character: result.character,
+            thumbnailColor: result.character.color,
+            portraitStyle,
+            portraitVariant: result.portraitVariant,
+            posterUrl,
+            enrichPending: false,
+            imagePending: false,
+            wantAiPortrait: !posterUrl,
+          });
+        })
+        .catch((err) => {
+          console.warn("Web reel failed for", shell.id, err);
+          const retries = hydrateRetriesRef.current.get(shell.id) ?? 0;
+          if (retries < 2) {
+            hydrateRetriesRef.current.set(shell.id, retries + 1);
+            attemptedHydrateRef.current.delete(shell.id);
+            window.setTimeout(() => {
+              const current = feedItemsRef.current.find((i) => i.id === shell.id);
+              if (current?.enrichPending) hydrateWebReel(current);
+            }, 400 * (retries + 1));
+            return;
+          }
+
+          const fallback = buildInlineFallbackReel({
+            topic,
+            gradeLevel: shell.gradeLevel,
+            scrollIndex: shell.scrollIndex ?? 0,
+            recentCharacterIds: recentCharactersForHydrate(
+              feedRecentRef.current,
+              topic,
+              feedItemsRef.current,
+              pendingCharactersRef.current
+            ),
+            topicCharacterHistory: feedRecentRef.current.topicCharacterHistory,
+          });
+
+          attemptedHydrateRef.current.add(shell.id);
+          hydrateRetriesRef.current.delete(shell.id);
+          recordCharacter(
+            feedRecentRef.current,
+            fallback.characterId,
+            fallback.character.name
+          );
+          recordTopicCharacter(feedRecentRef.current, topic, fallback.characterId);
+
+          const portraitStyle =
+            fallback.characterId === "sunny" ||
+            fallback.characterId === "einstein-cartoon"
+              ? "illustration"
+              : "realistic";
+
+          setFeedItems((prev) =>
+            prev.map((i) =>
+              i.id === shell.id
+                ? {
+                    ...i,
+                    title: fallback.title,
+                    transcript: fallback.transcript,
+                    sourceUrl: fallback.sourceUrl,
+                    posterUrl: fallback.posterUrl ?? "",
+                    wikiTitle: fallback.wikiTitle,
+                    character: fallback.character,
+                    thumbnailColor: fallback.character.color,
+                    portraitStyle,
+                    portraitVariant: fallback.portraitVariant,
+                    qualityScore: fallback.qualityScore,
+                    enrichPending: false,
+                    imagePending: false,
+                    wantAiPortrait: !fallback.posterUrl,
+                  }
+                : i
+            )
+          );
+
+          lazyUpgradePortrait({
+            ...shell,
+            title: fallback.title,
+            character: fallback.character,
+            thumbnailColor: fallback.character.color,
+            portraitStyle,
+            portraitVariant: fallback.portraitVariant,
+            posterUrl: fallback.posterUrl ?? "",
+            enrichPending: false,
+            imagePending: false,
+            wantAiPortrait: !fallback.posterUrl,
+          });
+        })
+        .finally(() => {
+          hydrateInflightRef.current.delete(shell.id);
+          runQueued();
+        });
+    },
+    [lazyUpgradePortrait]
+  );
+  hydrateWebReelRef.current = hydrateWebReel;
 
   const scheduleLazyPortrait = useCallback(
     (id: string) => {
@@ -166,7 +565,7 @@ export default function FeedPage() {
         const item = feedItemsRef.current.find((i) => i.id === id);
         if (item) lazyUpgradePortrait(item);
         portraitTimerRef.current = null;
-      }, AI_PORTRAIT_DELAY_MS);
+      }, PORTRAIT_FETCH_DELAY_MS);
     },
     [lazyUpgradePortrait]
   );
@@ -182,37 +581,170 @@ export default function FeedPage() {
     (id: string, visible: boolean) => {
       if (visible) {
         visibleReelIdRef.current = id;
+        setActiveReelId(id);
+        const item = feedItemsRef.current.find((i) => i.id === id);
+        if (item?.enrichPending) {
+          hydrateWebReel(item);
+        }
         scheduleLazyPortrait(id);
       } else if (visibleReelIdRef.current === id) {
         visibleReelIdRef.current = null;
+        setActiveReelId((current) => (current === id ? null : current));
+        stopAllCharacterSpeech(id);
+        portraitFailuresRef.current.delete(id);
+        attemptedPortraitRef.current.delete(id);
       }
     },
-    [scheduleLazyPortrait]
+    [hydrateWebReel, scheduleLazyPortrait]
   );
 
-  const rebuildFeed = useCallback((topic: Topic | "all", grade: GradeLevel) => {
-    cancelLazyPortrait();
-    portraitInflightRef.current = null;
-    pendingPortraitIdRef.current = null;
-    attemptedPortraitRef.current.clear();
-    setFeedItems(generateInstantFeed(topic, grade, 4));
-  }, [cancelLazyPortrait]);
+  const rebuildFeed = useCallback(
+    (topic: Topic | "all", grade: GradeLevel) => {
+      cancelLazyPortrait();
+      portraitInflightRef.current = null;
+      pendingPortraitIdRef.current = null;
+      attemptedPortraitRef.current.clear();
+      portraitFailuresRef.current.clear();
+      attemptedHydrateRef.current.clear();
+      hydrateInflightRef.current.clear();
+      hydrateQueueRef.current = [];
+      hydrateRetriesRef.current.clear();
+      pendingConceptsRef.current = [];
+      pendingCharactersRef.current = [];
+
+      const preservedConcepts = loadSessionConcepts();
+      const preservedHistory = feedRecentRef.current.topicCharacterHistory;
+      const preservedCharacters = feedRecentRef.current.characters;
+      const preservedCharacterNames = feedRecentRef.current.characterNames;
+
+      feedRecentRef.current = createFeedRecent();
+      feedRecentRef.current.concepts = preservedConcepts.slice(0, 64);
+      feedRecentRef.current.topicCharacterHistory = preservedHistory;
+      feedRecentRef.current.characters = preservedCharacters.slice(0, 32);
+      feedRecentRef.current.characterNames = preservedCharacterNames.slice(0, 32);
+
+      const scrollStart =
+        topic === "all"
+          ? preservedConcepts.length
+          : sessionScrollOffset(topic);
+      clearPortraitCache();
+      clearWebPortraitCache();
+
+      const shells = createPlaceholderFeed(
+        topic,
+        grade,
+        4,
+        feedRecentRef.current,
+        scrollStart
+      );
+      feedSequenceRef.current = scrollStart + shells.length;
+      visibleReelIdRef.current = shells[0]?.id ?? null;
+      setActiveReelId(shells[0]?.id ?? null);
+      setFeedItems(shells);
+      for (const shell of shells) {
+        hydrateWebReel(shell);
+      }
+    },
+    [cancelLazyPortrait, hydrateWebReel]
+  );
+
+  const handleGradeChange = useCallback(
+    (grade: GradeLevel) => {
+      setGradeLevel(grade);
+      writeSavedGrade(grade);
+      stopAllCharacterSpeech();
+      mainRef.current?.scrollTo({ top: 0, behavior: "instant" });
+
+      let topic = topicFilterRef.current;
+      if (topic !== "all" && !topicAllowedForGrade(topic, grade)) {
+        setTopicFilter("all");
+        topic = "all";
+      }
+
+      skipNextFilterRebuildRef.current = true;
+      rebuildFeed(topic, grade);
+    },
+    [rebuildFeed]
+  );
 
   useEffect(() => {
+    if (feedItemsRef.current.length > 0) return;
+
+    const grade = readSavedGrade() ?? DEFAULT_GRADE;
+    if (grade !== gradeLevel) {
+      skipNextFilterRebuildRef.current = true;
+      setGradeLevel(grade);
+    }
+
+    const recent = createFeedRecent();
+    recent.concepts = loadSessionConcepts().slice(0, 64);
+    const scrollStart = sessionScrollOffset();
+    const shells = createPlaceholderFeed(
+      "all",
+      grade,
+      4,
+      recent,
+      scrollStart
+    );
+
+    feedRecentRef.current = recent;
+    feedSequenceRef.current = scrollStart + shells.length;
+    visibleReelIdRef.current = shells[0]?.id ?? null;
+    feedItemsRef.current = shells;
+    setActiveReelId(shells[0]?.id ?? null);
+    setFeedItems(shells);
+
+    for (const shell of shells) {
+      hydrateWebReelRef.current(shell);
+    }
+  }, []);
+
+  // Recover if client JS missed the first bootstrap (e.g. strict mode or stale HMR).
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (feedItemsRef.current.length > 0) return;
+
+      const grade = readSavedGrade() ?? DEFAULT_GRADE;
+      const recent = createFeedRecent();
+      recent.concepts = loadSessionConcepts().slice(0, 64);
+      const scrollStart = sessionScrollOffset();
+      const shells = createPlaceholderFeed("all", grade, 4, recent, scrollStart);
+
+      feedRecentRef.current = recent;
+      feedSequenceRef.current = scrollStart + shells.length;
+      visibleReelIdRef.current = shells[0]?.id ?? null;
+      feedItemsRef.current = shells;
+      setActiveReelId(shells[0]?.id ?? null);
+      setFeedItems(shells);
+
+      for (const shell of shells) {
+        hydrateWebReelRef.current(shell);
+      }
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (skipInitialFilterEffectRef.current) {
+      skipInitialFilterEffectRef.current = false;
+      return;
+    }
+
+    if (skipNextFilterRebuildRef.current) {
+      skipNextFilterRebuildRef.current = false;
+      return;
+    }
+
     if (
       topicFilter !== "all" &&
       !topicAllowedForGrade(topicFilter, gradeLevel)
     ) {
       setTopicFilter("all");
-      rebuildFeed("all", gradeLevel);
       return;
     }
 
-    // Initial feed is already generated in useState — avoid remount on first paint
-    if (!skippedInitialRebuildRef.current) {
-      skippedInitialRebuildRef.current = true;
-      return;
-    }
+    if (feedItemsRef.current.length === 0) return;
 
     rebuildFeed(topicFilter, gradeLevel);
   }, [topicFilter, gradeLevel, rebuildFeed]);
@@ -226,19 +758,33 @@ export default function FeedPage() {
         if (!entry.isIntersecting || loadingMoreRef.current) return;
         loadingMoreRef.current = true;
 
-        const topics =
-          topicFilter === "all" ? topicsForGrade(gradeLevel) : [topicFilter];
-        const topic = topics[Math.floor(Math.random() * topics.length)];
+        const scrollIndex = feedSequenceRef.current++;
+        const topic = pickTopicForFeed(
+          topicFilter,
+          gradeLevel,
+          scrollIndex,
+          feedRecentRef.current
+        );
 
-        setFeedItems((prev) => [...prev, generateInstantSlop(topic, gradeLevel)]);
-        loadingMoreRef.current = false;
+        const shell = createPlaceholderReel(
+          topic,
+          gradeLevel,
+          scrollIndex,
+          feedRecentRef.current
+        );
+
+        setFeedItems((prev) => {
+          loadingMoreRef.current = false;
+          return [...prev, shell];
+        });
+        hydrateWebReel(shell);
       },
       { rootMargin: "60px", threshold: 0 }
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [topicFilter, gradeLevel]);
+  }, [topicFilter, gradeLevel, hydrateWebReel]);
 
   useEffect(() => () => cancelLazyPortrait(), [cancelLazyPortrait]);
 
@@ -257,6 +803,10 @@ export default function FeedPage() {
   return (
     <PageShell fullHeight className="relative">
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-[7.5rem] bg-gradient-to-b from-black/60 via-black/30 to-transparent"
+          aria-hidden
+        />
         <div className="pointer-events-auto flex items-start justify-between gap-2 px-4 pt-4">
           <p className="text-[15px] font-semibold tracking-tight text-white drop-shadow-md">
             Luminary
@@ -280,19 +830,35 @@ export default function FeedPage() {
         ref={mainRef}
         className="h-[100dvh] snap-y snap-mandatory overflow-y-scroll no-scrollbar"
       >
-        {feedItems.map((item, index) => (
-          <ReelSlide
-            key={item.id}
-            item={item}
-            priority={index === 0}
-            muted={muted}
-            saved={savedIds.has(item.id)}
-            onSave={() => handleSave(item)}
-            onQuiz={() => handleQuiz(item)}
-            onToggleMute={handleToggleMute}
-            onVisibilityChange={handleReelVisibility}
-          />
-        ))}
+        {feedItems.length === 0 ? (
+          <section className="relative flex h-[100dvh] w-full flex-shrink-0 items-center justify-center bg-pastel-cream">
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <div
+                className="h-9 w-9 animate-spin rounded-full border-2 border-pastel-lilac border-t-transparent"
+                aria-hidden
+              />
+              <p className="text-sm font-medium text-pastel-ink/80">
+                Loading lessons…
+              </p>
+            </div>
+          </section>
+        ) : (
+          feedItems.map((item, index) => (
+            <ReelSlide
+              key={item.id}
+              item={item}
+              priority={index === 0}
+              muted={muted}
+              speechActive={activeReelId === item.id}
+              saved={savedIds.has(item.id)}
+              onSave={() => handleSave(item)}
+              onQuiz={() => handleQuiz(item)}
+              onToggleMute={handleToggleMute}
+              onVisibilityChange={handleReelVisibility}
+              onPortraitBroken={handlePortraitBroken}
+            />
+          ))
+        )}
         <div ref={loadMoreRef} className="h-px w-full" aria-hidden />
       </main>
     </PageShell>

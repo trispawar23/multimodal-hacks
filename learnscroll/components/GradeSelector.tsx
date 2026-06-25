@@ -14,7 +14,7 @@ export function GradeSelector({ value, onChange, className }: GradeSelectorProps
   return (
     <div
       className={cn(
-        "flex rounded-full bg-white/85 p-0.5 backdrop-blur-sm",
+        "flex rounded-full bg-black/50 p-0.5 ring-1 ring-inset ring-white/20 backdrop-blur-md",
         className
       )}
     >
@@ -26,8 +26,8 @@ export function GradeSelector({ value, onChange, className }: GradeSelectorProps
           className={cn(
             "rounded-full px-2 py-1 text-[10px] font-semibold transition-all",
             value === grade
-              ? "bg-pastel-lilac text-pastel-ink shadow-sm"
-              : "text-pastel-muted"
+              ? "bg-white text-pastel-ink shadow-sm"
+              : "text-white/90 [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]"
           )}
         >
           {GRADE_LABELS[grade]}

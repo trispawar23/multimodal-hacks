@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContentItem } from "@/lib/types";
 import { speakAsCharacter, stopCharacterSpeech } from "@/lib/character-voice";
 import { readFeedMuted } from "@/lib/feed-audio";
-import { playGeminiVoice, stopGeminiVoice } from "@/lib/gemini-voice-client";
+import { playCharacterVoice, stopAllCharacterSpeech } from "@/lib/voice-playback";
 import { isSpeechInputSupported, listenForSpeech } from "@/lib/speech-input";
 import { cn } from "./ui/cn";
 
@@ -59,15 +59,12 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
     setInterimText("");
 
     if (!readFeedMuted()) {
-      void playGeminiVoice(greeting, character, {
-        fallback: () => speakAsCharacter(greeting, character, { force: true }),
-      });
+      void playCharacterVoice(greeting, character, { force: true });
     }
 
     return () => {
       stopListenRef.current?.();
-      stopGeminiVoice();
-      stopCharacterSpeech();
+      stopAllCharacterSpeech();
     };
   }, [content]);
 
@@ -81,8 +78,7 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
       const prior = messagesRef.current;
       setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
       setIsThinking(true);
-      stopGeminiVoice();
-      stopCharacterSpeech();
+      stopAllCharacterSpeech();
 
       try {
         const res = await fetch("/api/voice/session", {
@@ -105,8 +101,9 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
           "My apologies — I lost my train of thought. Could you ask again?";
 
         setMessages((prev) => [...prev, { role: "character", text: answer }]);
-        await playGeminiVoice(answer, char, {
-          fallback: () => speakAsCharacter(answer, char, { force: true }),
+        await playCharacterVoice(answer, char, {
+          force: true,
+          gradeLevel: content.gradeLevel,
         });
       } catch {
         const answer = "The connection faltered. Please try your question once more.";

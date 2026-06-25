@@ -44,14 +44,24 @@ export interface ContentItem {
   talkingPortrait?: boolean;
   /** Visual style of the personality portrait */
   portraitStyle?: PortraitStyle;
+  /** Which Wikimedia portrait variant to fetch for this reel */
+  portraitVariant?: number;
   durationSec: number;
   viewCount: number;
   /** True when created by Gemini (not mock catalog) */
   generated?: boolean;
-  /** Waiting for Gemini portrait */
+  /** Waiting for web portrait lookup */
   imagePending?: boolean;
-  /** Static portrait shown; eligible for optional AI upgrade */
+  /** Needs portrait fetched from Wikimedia */
   wantAiPortrait?: boolean;
+  /** Original template kept as seed while web content loads */
+  templateSeed?: { title: string; transcript: string };
+  /** Scroll position when this reel was generated */
+  scrollIndex?: number;
+  /** Waiting for Wikipedia / Commons enrichment */
+  enrichPending?: boolean;
+  /** Canonical lesson concept title (for dedup while scrolling). */
+  wikiTitle?: string;
 }
 
 export interface QuizQuestion {

@@ -1,4 +1,5 @@
 import { TOPIC_LABELS } from "./grade-topics";
+import { conceptIsExcluded } from "./feed-diversity";
 import {
   adaptTemplateForGrade,
   gradeFallbackOrder,
@@ -33,6 +34,12 @@ const PERSONALITY_SCRIPTS: ScriptBank = {
             "When you jump, you push Earth downward and Earth pushes you upward — I called this my third law. Forces always arrive in matched pairs. Rockets rise because exhaust gas shoots down; the rocket climbs up. You cannot touch the world without the world touching you back. That symmetry runs through every machine and every orbit I ever calculated.",
           qualityScore: 0.94,
         },
+        {
+          title: "Inertia — why things resist change",
+          transcript:
+            "I called it inertia: objects keep doing what they are already doing unless a force acts. A book on a table stays still; a rolling ball would roll forever in empty space. Mass measures how hard it is to change that motion. Every engine, brake, and spacecraft relies on that stubborn habit matter has.",
+          qualityScore: 0.93,
+        },
       ],
       college: [
         {
@@ -60,6 +67,12 @@ const PERSONALITY_SCRIPTS: ScriptBank = {
           transcript:
             "You feel gravity as a pull, but I came to see it differently: mass curves space and time itself. Light follows that curve, which is why starlight bends near the Sun — one of the first proofs my theory was right. Jump, and you push Earth down while Earth pushes you up. The universe is stranger, and more elegant, than everyday intuition suggests.",
           qualityScore: 0.96,
+        },
+        {
+          title: "E equals m c squared — energy and mass are one",
+          transcript:
+            "I showed that mass and energy are two faces of the same coin. A tiny amount of mass holds an enormous reserve of energy because c — the speed of light — is so large. That insight explains why stars shine and why the universe can be both delicate and tremendously powerful.",
+          qualityScore: 0.95,
         },
       ],
       college: [
@@ -198,6 +211,12 @@ const PERSONALITY_SCRIPTS: ScriptBank = {
           transcript:
             "I processed ton after ton of pitchblende in a freezing shed to isolate radium — proof that atoms are not immutable. Some nuclei are unstable; they shed energy as radiation and become new elements. We named this radioactivity. It was painstaking, often lonely work, but it opened a door no one knew existed. Science rewards patience more than spectacle.",
           qualityScore: 0.95,
+        },
+        {
+          title: "Why I trusted the data over the textbooks",
+          transcript:
+            "When our instruments showed rays coming from uranium ore, others blamed faulty equipment. I measured again and again until the evidence was undeniable. Atoms were not indestructible little balls — they could break apart and transform. That discovery rewrote chemistry and launched the study of the nucleus.",
+          qualityScore: 0.94,
         },
       ],
       college: [
@@ -366,48 +385,12 @@ const PERSONALITY_SCRIPTS: ScriptBank = {
   },
 };
 
-const VOICE_OPENERS: Partial<
-  Record<string, Partial<Record<Topic, string>>>
-> = {
-  newton: {
-    physics: "Consider this, as I once did in my study — ",
-    math: "Numbers obey laws as strict as the planets — ",
-  },
-  einstein: {
-    physics: "Let me tell you what I found when I stopped taking gravity for granted — ",
-  },
-  tesla: {
-    physics: "The forces I chased my whole life begin here — ",
-    engineering: "I saw the future in oscillations and fields — ",
-  },
-  euler: { math: "A pattern worth your attention — " },
-  hypatia: {
-    math: "In my lectures at Alexandria I began simply — ",
-    philosophy: "Before we argue, we must examine — ",
-  },
-  turing: {
-    math: "I posed this question before computers existed — ",
-    engineering: "Every machine today inherits an idea I wrote on paper — ",
-  },
-  curie: { chemistry: "In my laboratory, behind lead screens, I learned — " },
-  darwin: { biology: "On my voyage I noticed something that changed everything — " },
-  aristotle: {
-    biology: "Walking the Lyceum gardens, I sorted life by its causes — ",
-    philosophy: "Let us reason together, step by step — ",
-  },
-  shakespeare: { literature: "On my stage, words carry double meanings — " },
-  cleopatra: { history: "I ruled when empires shifted like sand — " },
-  sunny: {
-    biology: "Hey friends! Jo and I just discovered — ",
-    math: "Okay, check this out — Jo and I noticed — ",
-    history: "Story time! Jo and I were reading about — ",
-  },
-};
-
 function pickFromPersonalityScripts(
   personality: Personality,
   topic: Topic,
-  gradeLevel: GradeLevel
+  gradeLevel: GradeLevel,
+  excludeTitles: string[] = [],
+  scrollIndex = 0
 ): SlopTemplate | null {
   const byTopic = PERSONALITY_SCRIPTS[personality.id]?.[topic];
   if (!byTopic) return null;
@@ -415,10 +398,100 @@ function pickFromPersonalityScripts(
   for (const grade of gradeFallbackOrder(gradeLevel)) {
     const pool = byTopic[grade];
     if (pool?.length) {
-      return pool[Math.floor(Math.random() * pool.length)];
+      const fresh = pool.filter(
+        (t) => !conceptIsExcluded(topic, t.title, excludeTitles)
+      );
+      if (!fresh.length) continue;
+      return fresh[scrollIndex % fresh.length];
     }
   }
   return null;
+}
+
+/** Curated first-person lesson for a roster teacher, if one exists. */
+export function pickPersonalityScript(
+  personality: Personality,
+  topic: Topic,
+  gradeLevel: GradeLevel,
+  excludeTitles: string[] = [],
+  scrollIndex = 0
+): SlopTemplate | null {
+  return pickFromPersonalityScripts(
+    personality,
+    topic,
+    gradeLevel,
+    excludeTitles,
+    scrollIndex
+  );
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Turn a Wikipedia biography extract into first-person speech. */
+function bioToFirstPerson(extract: string, name: string): string {
+  const full = name.trim();
+  const firstName = full.split(" ")[0] ?? full;
+  let transcript = extract.trim();
+
+  const fullPattern = new RegExp(
+    `^${escapeRegex(full).replace(/\\ /g, "(?:\\s+|_)+")}(?:\\s*\\([^)]+\\))?(?:,[^.!?]{0,160})?\\s+(is|was|were)\\b`,
+    "i"
+  );
+  transcript = transcript.replace(fullPattern, "I $1");
+
+  if (!/^I\b/.test(transcript)) {
+    const firstPattern = new RegExp(
+      `^${escapeRegex(firstName)}\\s+(is|was|were)\\b`,
+      "i"
+    );
+    transcript = transcript.replace(firstPattern, "I $1");
+  }
+
+  transcript = transcript
+    .replace(/(^|[.!?]\s+)(She|He)\b/g, "$1I")
+    .replace(/\bHer\b/g, "My")
+    .replace(/\bHis\b/g, "My")
+    .replace(/\bherself\b/gi, "myself")
+    .replace(/\bhimself\b/gi, "myself");
+
+  return transcript;
+}
+
+/** Guest teachers speak from their own Wikipedia biography. */
+export function voiceWrapGuestBio(
+  template: SlopTemplate,
+  personality: Personality,
+  topic: Topic,
+  gradeLevel: GradeLevel
+): SlopTemplate {
+  const era =
+    personality.era && personality.era !== "Historical era"
+      ? personality.era
+      : "";
+  const opener = era
+    ? `I am ${personality.name}. I lived in ${era}. `
+    : `I am ${personality.name}. `;
+
+  let transcript = bioToFirstPerson(template.transcript, personality.name);
+
+  if (!/^I\b/.test(transcript)) {
+    transcript = `${opener}${transcript.charAt(0).toLowerCase()}${transcript.slice(1)}`;
+  } else if (!transcript.startsWith(`I am ${personality.name}`)) {
+    transcript = `${opener}${transcript}`;
+  }
+
+  const title = template.title.toLowerCase().includes(personality.name.toLowerCase())
+    ? `${personality.name}: my story`
+    : `${personality.name} — ${template.title}`;
+
+  return adaptTemplateForGrade(
+    { title, transcript, qualityScore: template.qualityScore },
+    gradeLevel,
+    personality,
+    topic
+  );
 }
 
 /** Rewrite a generic template in first-person character voice */
@@ -428,11 +501,6 @@ export function voiceWrapTemplate(
   topic: Topic,
   gradeLevel: GradeLevel
 ): SlopTemplate {
-  const topicLabel = TOPIC_LABELS[topic].toLowerCase();
-  const opener =
-    VOICE_OPENERS[personality.id]?.[topic] ??
-    `Let me speak plainly about ${topicLabel} — `;
-
   let transcript = template.transcript;
 
   const thirdPersonFixes: Record<string, [RegExp, string][]> = {
@@ -459,14 +527,10 @@ export function voiceWrapTemplate(
     transcript = transcript.replace(pattern, replacement);
   }
 
-  if (!/^(I |Hi |Hey |Let me |Consider |When I |In my |On my )/.test(transcript)) {
-    transcript = `${opener}${transcript.charAt(0).toLowerCase()}${transcript.slice(1)}`;
-  }
-
   const shortName = personality.name.split(" ").pop() ?? personality.name;
   const title = template.title.toLowerCase().includes(shortName.toLowerCase())
     ? template.title
-    : `${personality.name} on ${topicLabel}`;
+    : `${personality.name} — ${template.title}`;
 
   return adaptTemplateForGrade(
     { title, transcript, qualityScore: template.qualityScore },
@@ -480,9 +544,15 @@ export function pickVoicedTemplate(
   genericPicker: (topic: Topic, gradeLevel: GradeLevel) => SlopTemplate,
   topic: Topic,
   gradeLevel: GradeLevel,
-  personality: Personality
+  personality: Personality,
+  excludeTitles: string[] = []
 ): SlopTemplate {
-  const personal = pickFromPersonalityScripts(personality, topic, gradeLevel);
+  const personal = pickFromPersonalityScripts(
+    personality,
+    topic,
+    gradeLevel,
+    excludeTitles
+  );
   if (personal) {
     return adaptTemplateForGrade(personal, gradeLevel, personality, topic);
   }
@@ -499,8 +569,8 @@ export function pickVoicedTemplate(
 
   return adaptTemplateForGrade(
     {
-      title: `${personality.name} on ${TOPIC_LABELS[topic]}`,
-      transcript: `Let me share something important about ${TOPIC_LABELS[topic].toLowerCase()} that is worth remembering.`,
+      title: `${personality.name} — ${TOPIC_LABELS[topic]}`,
+      transcript: `Here is something worth knowing about ${TOPIC_LABELS[topic].toLowerCase()}.`,
       qualityScore: 0.85,
     },
     gradeLevel,

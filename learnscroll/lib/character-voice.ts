@@ -3,43 +3,58 @@ import type { Personality } from "./personalities";
 import { readFeedMuted } from "./feed-audio";
 
 let voicesReady = false;
-let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let activeSession = 0;
+let activeSpeechOwner = "";
 
 function isPersonality(c: AICharacter): c is Personality {
   return "voicePitch" in c && "voiceGender" in c;
 }
 
-/** Preferred system voice names per personality (tried in order) */
+/** High-quality voices — tried in order on each platform. */
+const QUALITY_VOICE_NAMES = [
+  "Samantha",
+  "Alex",
+  "Karen",
+  "Daniel",
+  "Victoria",
+  "Moira",
+  "Tessa",
+  "Fiona",
+  "Serena",
+  "Google US English",
+  "Microsoft Zira",
+  "Microsoft David",
+  "Microsoft Aria",
+  "Aaron",
+  "Nathan",
+  "Oliver",
+  "Tom",
+  "Lee",
+  "Jamie",
+  "Fred",
+  "Arthur",
+  "James",
+  "Mark",
+  "Rishi",
+];
+
+const ROBOTIC_VOICE =
+  /espeak|android|compact|mobile|offline|novelty|bad news|bells|bubble|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|zarvox|bahh|boing|bubbles|junior|pipe|ralph|trinoids|whisper/i;
+
 const PERSONALITY_VOICE_NAMES: Record<string, string[]> = {
-  newton: ["Daniel", "Fred", "Arthur", "James", "David", "Microsoft David"],
-  einstein: ["Alex", "Oliver", "Mark", "Google UK English Male", "Rishi"],
-  darwin: ["Jamie", "Lee", "Tom", "Daniel", "Fred"],
-  euler: ["Thomas", "Nicky", "Arthur", "Daniel"],
-  turing: ["Ryan", "Oliver", "Alex", "Mark", "Daniel"],
-  tesla: ["Jacques", "Tom", "Fred", "Daniel"],
+  newton: ["Daniel", "Arthur", "Fred", "James", "Microsoft David"],
+  einstein: ["Alex", "Oliver", "Aaron", "Mark", "Rishi"],
+  "einstein-cartoon": ["Alex", "Oliver", "Aaron", "Junior", "Kathy"],
+  darwin: ["Jamie", "Tom", "Daniel", "Fred"],
+  euler: ["Thomas", "Arthur", "Daniel"],
+  turing: ["Ryan", "Oliver", "Alex", "Aaron"],
+  tesla: ["Tom", "Fred", "Daniel", "Jacques"],
   aristotle: ["Fred", "Arthur", "Daniel", "James"],
   shakespeare: ["Oliver", "Arthur", "Daniel", "Alex"],
-  curie: ["Amelie", "Marie", "Karen", "Samantha", "Tessa", "Microsoft Zira"],
-  hypatia: ["Victoria", "Moira", "Serena", "Kate", "Samantha"],
-  cleopatra: ["Samantha", "Karen", "Fiona", "Tessa", "Microsoft Zira"],
-  sunny: ["Junior", "Kathy", "Zoe", "Google UK English Female"],
-};
-
-const MALE_VOICE_SLOTS: Record<string, number> = {
-  newton: 0,
-  aristotle: 1,
-  darwin: 2,
-  euler: 3,
-  shakespeare: 4,
-  tesla: 5,
-  einstein: 6,
-  turing: 7,
-};
-
-const FEMALE_VOICE_SLOTS: Record<string, number> = {
-  curie: 0,
-  hypatia: 1,
-  cleopatra: 2,
+  curie: ["Samantha", "Karen", "Victoria", "Moira", "Microsoft Zira"],
+  hypatia: ["Victoria", "Moira", "Serena", "Samantha"],
+  cleopatra: ["Samantha", "Karen", "Fiona", "Tessa"],
+  sunny: ["Samantha", "Karen", "Zoe", "Tessa"],
 };
 
 function synth(): SpeechSynthesis | null {
@@ -53,7 +68,7 @@ function englishVoices(): SpeechSynthesisVoice[] {
   return s.getVoices().filter((v) => v.lang.startsWith("en"));
 }
 
-function waitForVoices(timeoutMs = 1200): Promise<SpeechSynthesisVoice[]> {
+function waitForVoices(timeoutMs = 2000): Promise<SpeechSynthesisVoice[]> {
   const existing = englishVoices();
   if (existing.length) return Promise.resolve(existing);
 
@@ -86,30 +101,28 @@ function isFemaleVoice(name: string): boolean {
   );
 }
 
-function isKidVoice(name: string): boolean {
-  return /junior|child|kathy|zoe|ana \(child\)|kids/i.test(name);
+function voiceQualityScore(voice: SpeechSynthesisVoice): number {
+  let score = 0;
+  if (voice.localService) score += 20;
+  if (voice.lang === "en-US" || voice.lang === "en-GB") score += 8;
+  if (ROBOTIC_VOICE.test(voice.name)) score -= 200;
+
+  for (let i = 0; i < QUALITY_VOICE_NAMES.length; i += 1) {
+    if (voice.name.includes(QUALITY_VOICE_NAMES[i])) {
+      score += 120 - i * 3;
+      break;
+    }
+  }
+
+  return score;
 }
 
-function maleVoicePool(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
-  const pool = voices.filter(
-    (v) =>
-      !isFemaleVoice(v.name) &&
-      !isKidVoice(v.name) &&
-      (/male|daniel|alex|fred|david|tom|james|aaron|nathan|arthur|oliver|rishi|mark|ryan|jamie|lee|thomas|nicky|jacques|microsoft david|google uk english male/i.test(
-        v.name
-      ) ||
-        !isFemaleVoice(v.name))
+function usableVoices(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
+  const filtered = voices.filter((v) => !ROBOTIC_VOICE.test(v.name));
+  const local = filtered.filter((v) => v.localService);
+  const pool = (local.length ? local : filtered).sort(
+    (a, b) => voiceQualityScore(b) - voiceQualityScore(a)
   );
-  return pool.length ? pool : voices;
-}
-
-function femaleVoicePool(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
-  const pool = voices.filter((v) => isFemaleVoice(v.name));
-  return pool.length ? pool : voices;
-}
-
-function kidVoicePool(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
-  const pool = voices.filter((v) => isKidVoice(v.name) || isFemaleVoice(v.name));
   return pool.length ? pool : voices;
 }
 
@@ -121,89 +134,199 @@ function matchByName(
     const hit = voices.find((v) =>
       v.name.toLowerCase().includes(preferred.toLowerCase())
     );
-    if (hit) return hit;
+    if (hit && !ROBOTIC_VOICE.test(hit.name)) return hit;
   }
   return null;
-}
-
-function pickFromPool(
-  pool: SpeechSynthesisVoice[],
-  slot: number
-): SpeechSynthesisVoice | null {
-  if (!pool.length) return null;
-  return pool[slot % pool.length];
 }
 
 function pickVoice(
   character: AICharacter,
   voices: SpeechSynthesisVoice[]
 ): SpeechSynthesisVoice | null {
-  if (!voices.length) return null;
+  const pool = usableVoices(voices);
+  if (!pool.length) return null;
 
   if (!isPersonality(character)) {
-    return voices[0];
+    return pool[0];
   }
 
   const prefs = PERSONALITY_VOICE_NAMES[character.id] ?? [];
-  const named = matchByName(voices, prefs);
+  const named = matchByName(pool, prefs);
   if (named) return named;
 
   const gender = character.voiceGender;
+  const genderPool =
+    gender === "female"
+      ? pool.filter((v) => isFemaleVoice(v.name))
+      : gender === "male"
+        ? pool.filter((v) => !isFemaleVoice(v.name))
+        : pool;
 
-  if (gender === "female") {
-    const pool = femaleVoicePool(voices);
-    const slot = FEMALE_VOICE_SLOTS[character.id] ?? 0;
-    return pickFromPool(pool, slot) ?? voices[0];
-  }
-
-  if (gender === "neutral") {
-    const pool = kidVoicePool(voices);
-    return pickFromPool(pool, 0) ?? voices[0];
-  }
-
-  const pool = maleVoicePool(voices);
-  const slot = MALE_VOICE_SLOTS[character.id] ?? 0;
-  return pickFromPool(pool, slot) ?? voices[0];
+  const slot = [...character.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const candidates = genderPool.length ? genderPool : pool;
+  return candidates[slot % candidates.length] ?? pool[0];
 }
 
-function startKeepAlive(): void {
-  stopKeepAlive();
-  keepAliveTimer = setInterval(() => {
+function speechRate(character: AICharacter): number {
+  if (!isPersonality(character)) return 0.98;
+  const base = Math.min(1.02, Math.max(0.92, character.voiceRate));
+  return Math.round(base * 0.98 * 100) / 100;
+}
+
+function speechPitch(character: AICharacter): number {
+  if (!isPersonality(character)) return 1;
+  // Keep pitch near neutral — extreme values sound robotic.
+  return Math.min(1.04, Math.max(0.94, character.voicePitch));
+}
+
+function humanizeForSpeech(text: string): string {
+  return text
+    .replace(/\s+/g, " ")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/—/g, ", ")
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/\bi am\b/gi, "I'm")
+    .replace(/\bit is\b/gi, "it's")
+    .replace(/\bthat is\b/gi, "that's")
+    .replace(/\bdo not\b/gi, "don't")
+    .replace(/\bcan not\b/gi, "can't")
+    .replace(/\bwill not\b/gi, "won't")
+    .trim();
+}
+
+/** Text optimized for TTS — short, clear, and within model limits. */
+export function spokenLessonText(
+  text: string,
+  gradeLevel?: string
+): string {
+  const limits: Record<string, { sentences: number; chars: number }> = {
+    "K-5": { sentences: 2, chars: 220 },
+    "6-8": { sentences: 3, chars: 280 },
+    "9-12": { sentences: 3, chars: 340 },
+    college: { sentences: 4, chars: 380 },
+    graduate: { sentences: 4, chars: 400 },
+  };
+  const limit = limits[gradeLevel ?? "9-12"] ?? limits["9-12"];
+
+  const clean = humanizeForSpeech(text);
+
+  const sentences = clean.match(/[^.!?]+[.!?]+/g);
+  if (!sentences?.length) {
+    return clean.slice(0, limit.chars);
+  }
+
+  let out = "";
+  for (const sentence of sentences.slice(0, limit.sentences)) {
+    const next = `${out}${sentence}`;
+    if (next.length > limit.chars && out) break;
+    out = next;
+  }
+
+  const spoken = (out.trim() || sentences[0].trim()).slice(0, limit.chars);
+  return spoken;
+}
+
+/** @deprecated Use spokenLessonText */
+export function speechIntro(text: string): string {
+  return spokenLessonText(text, "9-12");
+}
+
+function speechParts(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const sentences = trimmed.match(/[^.!?]+[.!?]+/g);
+  if (!sentences?.length) return [trimmed.slice(0, 420)];
+
+  const full = sentences.join(" ").trim();
+  if (full.length <= 480) return [full];
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    const next = `${current}${sentence}`;
+    if (next.length > 300 && current) {
+      chunks.push(current.trim());
+      current = sentence;
+    } else {
+      current = next;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length ? chunks : [trimmed.slice(0, 420)];
+}
+
+let activeFingerprint = "";
+
+type SpeakHooks = {
+  onStart?: () => void;
+  onEnd?: () => void;
+  onError?: () => void;
+  force?: boolean;
+  muted?: boolean;
+  speechKey?: string;
+  speechOwner?: string;
+};
+
+function speakPart(
+  part: string,
+  character: AICharacter,
+  voice: SpeechSynthesisVoice | null,
+  session: number,
+  hooks?: SpeakHooks
+): Promise<void> {
+  return new Promise((resolve) => {
     const s = synth();
-    if (!s?.speaking) {
-      stopKeepAlive();
+    if (!s || session !== activeSession) {
+      resolve();
       return;
     }
-    s.pause();
-    s.resume();
-  }, 10000);
-}
 
-function stopKeepAlive(): void {
-  if (keepAliveTimer) {
-    clearInterval(keepAliveTimer);
-    keepAliveTimer = null;
-  }
-}
+    const utterance = new SpeechSynthesisUtterance(part);
+    utterance.lang = voice?.lang ?? "en-US";
+    utterance.rate = speechRate(character);
+    utterance.pitch = speechPitch(character);
+    utterance.volume = 1;
+    if (voice) utterance.voice = voice;
 
-/** Spoken intro — enough to hear the character teach the topic in view */
-export function speechIntro(text: string): string {
-  const parts = text.match(/[^.!?]+[.!?]+/g);
-  if (!parts?.length) return text.slice(0, 280);
-  if (parts.length <= 4 || text.length <= 280) return text.trim();
-  return parts.slice(0, 4).join(" ").trim();
+    let started = false;
+
+    utterance.onstart = () => {
+      if (session !== activeSession) return;
+      started = true;
+      hooks?.onStart?.();
+    };
+
+    utterance.onend = () => {
+      if (session !== activeSession) return;
+      resolve();
+    };
+
+    utterance.onerror = (event) => {
+      if (session !== activeSession) return;
+      if (event.error !== "canceled" && event.error !== "interrupted") {
+        hooks?.onError?.();
+      }
+      resolve();
+    };
+
+    s.speak(utterance);
+
+    window.setTimeout(() => {
+      if (session !== activeSession || started) return;
+      if (s.speaking && !s.paused) {
+        s.pause();
+        s.resume();
+      }
+    }, 250);
+  });
 }
 
 export function speakAsCharacter(
   text: string,
   character: AICharacter,
-  hooks?: {
-    onStart?: () => void;
-    onEnd?: () => void;
-    onError?: () => void;
-    force?: boolean;
-    muted?: boolean;
-  }
+  hooks?: SpeakHooks
 ): void {
   const s = synth();
   if (!s || !text.trim()) return;
@@ -211,71 +334,71 @@ export function speakAsCharacter(
   const isMuted = hooks?.muted ?? readFeedMuted();
   if (!hooks?.force && isMuted) return;
 
-  const spoken = speechIntro(text);
+  const owner = hooks?.speechOwner ?? hooks?.speechKey ?? character.id;
+  if (activeSpeechOwner && activeSpeechOwner !== owner) {
+    stopCharacterSpeech();
+  }
+  activeSpeechOwner = owner;
 
-  void waitForVoices().then((voices) => {
-    s.cancel();
-    stopKeepAlive();
+  const session = ++activeSession;
+  const parts = speechParts(text);
+  if (!parts.length) return;
+
+  const fingerprint =
+    hooks?.speechKey ?? `${owner}:${parts.join("|").slice(0, 120)}`;
+
+  void waitForVoices().then(async (voices) => {
+    if (session !== activeSession) return;
+
+    const alreadyPlayingSame =
+      fingerprint === activeFingerprint && (s.speaking || s.pending);
+    if (!alreadyPlayingSame) {
+      if (s.speaking || s.pending) {
+        s.cancel();
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      activeFingerprint = fingerprint;
+    }
+    if (session !== activeSession) return;
 
     const voice = pickVoice(character, voices);
     let started = false;
 
-    const dispatch = () => {
-      const utterance = new SpeechSynthesisUtterance(spoken);
+    for (const part of parts) {
+      if (session !== activeSession) break;
+      await speakPart(part, character, voice, session, {
+        ...hooks,
+        onStart: () => {
+          if (!started) {
+            started = true;
+            hooks?.onStart?.();
+          }
+        },
+      });
+    }
 
-      if (isPersonality(character)) {
-        utterance.pitch = character.voicePitch;
-        utterance.rate = character.voiceRate;
-      } else {
-        utterance.pitch = 1;
-        utterance.rate = 1;
-      }
-
-      if (voice) utterance.voice = voice;
-
-      utterance.onstart = () => {
-        started = true;
-        startKeepAlive();
-        hooks?.onStart?.();
-      };
-
-      utterance.onend = () => {
-        stopKeepAlive();
-        hooks?.onEnd?.();
-      };
-
-      utterance.onerror = (event) => {
-        stopKeepAlive();
-        if (event.error === "canceled" || event.error === "interrupted") {
-          if (started) hooks?.onEnd?.();
-          return;
-        }
-        hooks?.onError?.();
-        hooks?.onEnd?.();
-      };
-
-      s.speak(utterance);
-    };
-
-    dispatch();
-
-    // Chrome sometimes queues but never starts — nudge after a tick
-    setTimeout(() => {
-      if (!started && s.speaking) {
-        s.pause();
-        s.resume();
-      } else if (!started && !s.speaking) {
-        dispatch();
-      }
-    }, 250);
+    if (session !== activeSession) return;
+    if (activeSpeechOwner === owner) {
+      activeSpeechOwner = "";
+    }
+    hooks?.onEnd?.();
   });
 }
 
-export function stopCharacterSpeech(): void {
+export function stopCharacterSpeech(speechOwner?: string): void {
+  if (speechOwner && activeSpeechOwner && speechOwner !== activeSpeechOwner) {
+    return;
+  }
+  activeSpeechOwner = "";
+  activeSession += 1;
+  activeFingerprint = "";
   const s = synth();
   if (!s) return;
-  stopKeepAlive();
   s.cancel();
+}
+
+export function isCharacterSpeaking(): boolean {
+  return synth()?.speaking ?? false;
 }
 
 export function preloadVoices(): void {

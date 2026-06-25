@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCharacter } from "@/lib/content-catalog";
-import { voiceNameForCharacter, voiceStyleForCharacter } from "@/lib/voice-personas";
+import { spokenLessonText } from "@/lib/character-voice";
+import { voiceNameForCharacter, buildGeminiTtsPrompt } from "@/lib/voice-personas";
+import type { AICharacter } from "@/lib/types";
 
 export const maxDuration = 30;
 
@@ -11,9 +13,13 @@ function ttsLog(event: string, details: Record<string, unknown> = {}) {
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   try {
-    const { text, characterId } = await req.json() as {
+    const { text, characterId, characterName, voiceGender, gradeLevel } =
+      (await req.json()) as {
       text?: string;
       characterId?: string;
+      characterName?: string;
+      voiceGender?: "male" | "female" | "neutral";
+      gradeLevel?: string;
     };
 
     if (!text?.trim()) {
@@ -28,22 +34,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const character = resolveCharacter(characterId);
-    const voiceName = voiceNameForCharacter(character);
-    const style = voiceStyleForCharacter(character);
-    const prompt = [
-      `Perform this as ${character.name}, an AI educational character.`,
-      `Voice direction: ${style}.`,
-      "Make it sound like a natural spoken reply in a live conversation: warm, responsive, lightly expressive, with natural pauses.",
-      "Do not impersonate a real recording or claim to be the historical person.",
-      "",
-      text,
-    ].join("\n");
+    const base = resolveCharacter(characterId);
+    const character: AICharacter = {
+      ...base,
+      name: characterName?.trim() || base.name,
+    };
+    const voiceCharacter =
+      voiceGender && "voiceGender" in base
+        ? ({ ...character, voiceGender } as typeof base)
+        : character;
+
+    const spoken = spokenLessonText(text, gradeLevel);
+    const voiceName = voiceNameForCharacter(voiceCharacter);
+    const prompt = buildGeminiTtsPrompt(voiceCharacter, spoken);
 
     ttsLog("request.start", {
       characterId: character.id,
       voiceName,
-      textLength: text.length,
+      textLength: spoken.length,
       model: "gemini-2.5-flash-preview-tts",
     });
     const geminiRequestAt = Date.now();

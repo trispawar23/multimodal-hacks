@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateCharacterReply } from "@/lib/gemini";
+import { buildLocalCharacterReply } from "@/lib/local-character-reply";
 import { getPersonality } from "@/lib/personalities";
 import type { GradeLevel, Topic } from "@/lib/types";
 
@@ -11,17 +12,17 @@ function voiceSessionLog(event: string, details: Record<string, unknown> = {}) {
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
-  try {
-    const body = (await req.json()) as {
-      characterId: string;
-      question: string;
-      title?: string;
-      transcript?: string;
-      gradeLevel?: GradeLevel;
-      topics?: Topic[];
-      history?: { role: "user" | "character"; text: string }[];
-    };
+  const body = (await req.json()) as {
+    characterId: string;
+    question: string;
+    title?: string;
+    transcript?: string;
+    gradeLevel?: GradeLevel;
+    topics?: Topic[];
+    history?: { role: "user" | "character"; text: string }[];
+  };
 
+  try {
     const { characterId, question } = body;
     if (!characterId?.trim() || !question?.trim()) {
       return NextResponse.json({ error: "Missing characterId or question" }, { status: 400 });
@@ -45,14 +46,21 @@ export async function POST(req: NextRequest) {
     });
 
     if (!process.env.GEMINI_API_KEY) {
+      const answer = buildLocalCharacterReply(
+        personality,
+        question.trim(),
+        { title, transcript, gradeLevel, topics },
+        history
+      );
       voiceSessionLog("request.fallback.no_api_key", {
         characterId,
+        answerLength: answer.length,
         totalMs: Date.now() - startedAt,
       });
       return NextResponse.json({
-        answer: `${personality.name} here. "${question}" — a fine question! From what we covered in "${title}", the heart of it is: ${transcript.split(".")[0] || "keep exploring and stay curious"}. Ask me about my life or this subject anytime.`,
+        answer,
         characterId,
-        grounded: false,
+        grounded: true,
         fallback: true,
       });
     }
@@ -86,6 +94,23 @@ export async function POST(req: NextRequest) {
       totalMs: Date.now() - startedAt,
       error: message,
     });
-    return NextResponse.json({ error: message, fallback: true }, { status: 500 });
+
+    try {
+      const personality = getPersonality(body.characterId);
+      const answer = buildLocalCharacterReply(
+        personality,
+        body.question?.trim() ?? "",
+        {
+          title: body.title ?? "this lesson",
+          transcript: body.transcript ?? "",
+          gradeLevel: body.gradeLevel ?? "9-12",
+          topics: body.topics ?? personality.subjects,
+        },
+        body.history ?? []
+      );
+      return NextResponse.json({ answer, characterId: body.characterId, fallback: true });
+    } catch {
+      return NextResponse.json({ error: message, fallback: true }, { status: 500 });
+    }
   }
 }

@@ -15,26 +15,26 @@ export interface CharacterAssets {
 
 export const CHARACTER_ASSETS: Record<string, CharacterAssets> = {
   newton: {
-    posterUrl: "/media/newton-ai-talking.png",
+    posterUrl: "",
     portraitStyle: "realistic",
     thumbnailColor: "#A8C8FF",
     talkingPortrait: true,
   },
   einstein: {
-    posterUrl: "/media/einstein-realistic.png",
+    posterUrl: "",
     portraitStyle: "realistic",
     thumbnailColor: "#D4C4F0",
     talkingPortrait: true,
   },
   "einstein-cartoon": {
-    posterUrl: "/media/einstein-cartoon.png",
+    posterUrl: "",
     portraitStyle: "illustration",
     thumbnailColor: "#FFD6A5",
     talkingPortrait: true,
   },
   sunny: {
-    posterUrl: "/media/sunny-kids-3d.png",
-    portraitStyle: "3d",
+    posterUrl: "",
+    portraitStyle: "illustration",
     thumbnailColor: "#B8E8D0",
     talkingPortrait: true,
   },

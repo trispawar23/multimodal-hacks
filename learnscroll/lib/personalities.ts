@@ -1,5 +1,12 @@
 import type { AICharacter, GradeLevel, Topic } from "./types";
-import { PERSONALITIES_BY_GRADE } from "./grade-config";
+import { getGuestFigureName, isGuestCharacterId } from "./wiki-figures";
+import {
+  allTeachersForGrade,
+  gradeFallbackOrder,
+  PERSONALITIES_BY_GRADE,
+} from "./grade-config";
+import type { FeedRecent } from "./feed-diversity";
+import { pickDiverseIndex, topicCharacterAppearances } from "./feed-diversity";
 
 export interface Personality extends AICharacter {
   posterAsset: "newton" | "einstein" | "einstein-cartoon" | "sunny";
@@ -34,6 +41,18 @@ export const PERSONALITIES: Personality[] = [
     voiceGender: "male",
   },
   {
+    id: "einstein-cartoon",
+    name: "Professor Einstein",
+    era: "1879–1955",
+    subjects: ["physics", "math"],
+    initial: "E",
+    color: "#FFD6A5",
+    posterAsset: "einstein-cartoon",
+    voicePitch: 1.05,
+    voiceRate: 0.96,
+    voiceGender: "male",
+  },
+  {
     id: "curie",
     name: "Marie Curie",
     era: "1867–1934",
@@ -65,8 +84,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "E",
     color: "#FFD6A5",
     posterAsset: "newton",
-    voicePitch: 0.88,
-    voiceRate: 1.06,
+    voicePitch: 0.96,
+    voiceRate: 0.94,
     voiceGender: "male",
   },
   {
@@ -76,9 +95,9 @@ export const PERSONALITIES: Personality[] = [
     subjects: ["math", "philosophy"],
     initial: "H",
     color: "#C4E0FF",
-    posterAsset: "einstein-cartoon",
-    voicePitch: 1.12,
-    voiceRate: 0.92,
+    posterAsset: "einstein",
+    voicePitch: 1.02,
+    voiceRate: 0.94,
     voiceGender: "female",
   },
   {
@@ -113,8 +132,8 @@ export const PERSONALITIES: Personality[] = [
     initial: "A",
     color: "#E8E0D4",
     posterAsset: "newton",
-    voicePitch: 0.68,
-    voiceRate: 0.8,
+    voicePitch: 0.94,
+    voiceRate: 0.88,
     voiceGender: "male",
   },
   {
@@ -124,7 +143,7 @@ export const PERSONALITIES: Personality[] = [
     subjects: ["literature"],
     initial: "S",
     color: "#FFD6D6",
-    posterAsset: "einstein-cartoon",
+    posterAsset: "einstein",
     voicePitch: 0.82,
     voiceRate: 0.78,
     voiceGender: "male",
@@ -136,9 +155,9 @@ export const PERSONALITIES: Personality[] = [
     subjects: ["history"],
     initial: "C",
     color: "#F0D4E8",
-    posterAsset: "einstein-cartoon",
-    voicePitch: 1.18,
-    voiceRate: 0.9,
+    posterAsset: "einstein",
+    voicePitch: 1.02,
+    voiceRate: 0.94,
     voiceGender: "female",
   },
   {
@@ -149,37 +168,197 @@ export const PERSONALITIES: Personality[] = [
     initial: "S",
     color: "#B8E8D0",
     posterAsset: "sunny",
-    voicePitch: 1.28,
-    voiceRate: 1.12,
+    voicePitch: 1.04,
+    voiceRate: 0.96,
     voiceGender: "neutral",
   },
 ];
 
 const TOPIC_PERSONALITY_IDS: Record<Topic, string[]> = {
-  physics: ["einstein", "newton", "tesla"],
+  physics: ["newton", "einstein", "tesla"],
   math: ["euler", "hypatia", "turing"],
   chemistry: ["curie"],
-  biology: ["darwin", "aristotle", "sunny"],
-  history: ["cleopatra", "sunny"],
+  biology: ["darwin", "aristotle"],
+  history: ["cleopatra", "aristotle"],
   literature: ["shakespeare"],
   philosophy: ["aristotle", "hypatia"],
   engineering: ["tesla", "turing"],
 };
 
-export function pickPersonality(topic: Topic, gradeLevel: GradeLevel): Personality {
-  const gradePool = PERSONALITIES_BY_GRADE[gradeLevel]?.[topic];
-  const ids =
-    gradePool ??
-    PERSONALITIES_BY_GRADE["9-12"]?.[topic] ??
-    TOPIC_PERSONALITY_IDS[topic] ??
-    ["einstein"];
+export function personalityPool(topic: Topic, gradeLevel: GradeLevel): string[] {
+  for (const grade of gradeFallbackOrder(gradeLevel)) {
+    const pool = PERSONALITIES_BY_GRADE[grade]?.[topic];
+    if (pool?.length) return pool;
+  }
 
-  const id = ids[Math.floor(Math.random() * ids.length)];
-  return PERSONALITIES.find((p) => p.id === id) ?? PERSONALITIES[0];
+  if (gradeLevel === "K-5") {
+    return ["sunny", "einstein-cartoon"];
+  }
+
+  return TOPIC_PERSONALITY_IDS[topic] ?? ["sunny"];
+}
+
+/**
+ * Teachers for this topic + grade, restricted to figures who actually teach that subject.
+ */
+export function personalityTeachesTopic(
+  personality: Personality,
+  topic: Topic,
+  gradeLevel?: GradeLevel
+): boolean {
+  if (personality.id === "sunny") return true;
+  if (personality.id === "einstein-cartoon" && gradeLevel === "K-5") return true;
+  if (isGuestCharacterId(personality.id)) {
+    return (
+      personality.subjects.includes(topic) || personality.subjects.length === 0
+    );
+  }
+  return personality.subjects.includes(topic);
+}
+
+export function expertisePool(
+  topic: Topic,
+  gradeLevel: GradeLevel
+): string[] {
+  const pool = alignedPersonalityPool(topic, gradeLevel);
+  const experts = pool.filter((id) =>
+    personalityTeachesTopic(getPersonality(id), topic, gradeLevel)
+  );
+  if (experts.length) return experts;
+  return TOPIC_PERSONALITY_IDS[topic] ?? pool;
+}
+
+/**
+ * Teachers for this topic + grade. Grade-config pools are authoritative;
+ * expertise filtering removes mismatched roster entries (e.g. Curie on biology).
+ */
+export function alignedPersonalityPool(
+  topic: Topic,
+  gradeLevel: GradeLevel
+): string[] {
+  const pool = personalityPool(topic, gradeLevel);
+  if (pool.length) return pool;
+  return TOPIC_PERSONALITY_IDS[topic] ?? ["einstein"];
+}
+
+/** Neutral shell teacher — real personality is chosen when the web reel loads. */
+export const LOADING_PERSONALITY: Personality = {
+  id: "loading",
+  name: "Loading…",
+  era: "",
+  subjects: [],
+  initial: "…",
+  color: "#D8D8D8",
+  posterAsset: "sunny",
+  voicePitch: 1,
+  voiceRate: 1,
+  voiceGender: "neutral",
+};
+
+function pickFromPool(
+  pool: string[],
+  recentIds: string[],
+  feedRecent?: FeedRecent,
+  topic?: Topic
+): string {
+  if (!pool.length) return "einstein";
+
+  const recentSet = new Set(recentIds.filter(Boolean));
+  const fresh = pool.filter((id) => !recentSet.has(id));
+
+  if (fresh.length) {
+    const lastUsed = recentIds[0];
+    const withoutLast =
+      lastUsed && fresh.length > 1
+        ? fresh.filter((id) => id !== lastUsed)
+        : fresh;
+    const candidates = withoutLast.length ? withoutLast : fresh;
+    const idx = pickDiverseIndex(
+      candidates.length,
+      recentIds,
+      `personality-${topic ?? "any"}`
+    );
+    return candidates[idx]!;
+  }
+
+  if (feedRecent && topic) {
+    const sorted = [...pool].sort(
+      (a, b) =>
+        topicCharacterAppearances(feedRecent, topic, a) -
+        topicCharacterAppearances(feedRecent, topic, b)
+    );
+    const minCount = topicCharacterAppearances(feedRecent, topic, sorted[0]!);
+    const leastUsed = sorted.filter(
+      (id) => topicCharacterAppearances(feedRecent, topic, id) === minCount
+    );
+    const lastUsed = recentIds[0];
+    const withoutLast =
+      lastUsed && leastUsed.length > 1
+        ? leastUsed.filter((id) => id !== lastUsed)
+        : leastUsed;
+    const candidates = withoutLast.length ? withoutLast : leastUsed;
+    const idx = pickDiverseIndex(
+      candidates.length,
+      recentIds,
+      `personality-${topic}-least`
+    );
+    return candidates[idx]!;
+  }
+
+  const lastUsed = recentIds[0];
+  if (lastUsed && pool.length > 1) {
+    const withoutLast = pool.filter((id) => id !== lastUsed);
+    if (withoutLast.length) {
+      const idx = pickDiverseIndex(
+        withoutLast.length,
+        recentIds,
+        `personality-${topic ?? "pool"}`
+      );
+      return withoutLast[idx]!;
+    }
+  }
+
+  const idx = pickDiverseIndex(
+    pool.length,
+    recentIds,
+    `personality-${topic ?? "pool"}-full`
+  );
+  return pool[idx]!;
+}
+
+export function pickPersonality(
+  topic: Topic,
+  gradeLevel: GradeLevel,
+  recentIds: string[] = [],
+  _scrollIndex = 0,
+  recent?: FeedRecent
+): Personality {
+  const topicPool = expertisePool(topic, gradeLevel);
+  const pickId = pickFromPool(topicPool, recentIds, recent, topic);
+  return getPersonality(pickId);
 }
 
 export function getPersonality(id: string): Personality {
-  return PERSONALITIES.find((p) => p.id === id) ?? PERSONALITIES[0];
+  const found = PERSONALITIES.find((p) => p.id === id);
+  if (found) return found;
+  if (isGuestCharacterId(id)) {
+    const guest = getGuestFigureName(id);
+    if (guest) {
+      return {
+        id,
+        name: guest,
+        era: "Historical era",
+        subjects: [],
+        initial: guest.charAt(0).toUpperCase(),
+        color: "#D8D8D8",
+        posterAsset: "einstein",
+        voicePitch: 0.96,
+        voiceRate: 0.92,
+        voiceGender: "neutral",
+      };
+    }
+  }
+  return PERSONALITIES[0];
 }
 
 /** Visual identity hints so Gemini draws the correct historical figure */
@@ -208,4 +387,6 @@ export const PERSONALITY_PORTRAIT_HINTS: Record<string, string> = {
     "Cleopatra VII — Egyptian queen, regal gold jewelry and headdress, dignified stylized portrait",
   sunny:
     "Sunny & Jo — two cheerful cartoon kids (boy and girl), bright friendly faces, simple colorful clothes",
+  "einstein-cartoon":
+    "Professor Einstein — friendly cartoon Albert Einstein with wild white hair, warm smile, colorful kid-friendly style",
 };

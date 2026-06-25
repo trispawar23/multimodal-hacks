@@ -1,75 +1,97 @@
-import { getIllustratedAssets } from "./slop-config";
-import { pickPersonality } from "./personalities";
-import { pickTemplate } from "./slop-templates";
+import { LOADING_PERSONALITY } from "./personalities";
 import { topicAllowedForGrade, topicsForGrade } from "./grade-topics";
+import {
+  createFeedRecent,
+  pickDiverse,
+  recordTopic,
+  shuffle,
+  type FeedRecent,
+} from "./feed-diversity";
 import type { ContentItem, GradeLevel, Topic } from "./types";
 
 let idCounter = 0;
 
-export function generateInstantSlop(
-  topic: Topic,
-  gradeLevel: GradeLevel
-): ContentItem {
-  const personality = pickPersonality(topic, gradeLevel);
-  const template = pickTemplate(topic, gradeLevel, personality);
-  const assets = getIllustratedAssets(personality.posterAsset, gradeLevel);
-
-  return {
-    id: `instant-${++idCounter}-${Date.now()}`,
-    title: template.title,
-    sourceUrl: "https://learnscroll.app/instant",
-    platform: "tiktok",
-    transcript: template.transcript,
-    topics: [topic],
-    qualityScore: template.qualityScore,
-    gradeLevel,
-    character: personality,
-    thumbnailColor: assets.thumbnailColor,
-    posterUrl: "",
-    talkingPortrait: true,
-    portraitStyle: "illustration",
-    durationSec: Math.max(
-      30,
-      Math.min(90, Math.round(template.transcript.split(/\s+/).length / 2.5))
-    ),
-    viewCount: Math.floor(Math.random() * 50000) + 8000,
-    generated: true,
-    imagePending: true,
-    wantAiPortrait: true,
-  };
-}
-
-export function generateInstantFeed(
+/** Pick the next topic for a feed batch or infinite scroll. */
+export function pickTopicForFeed(
   topicFilter: Topic | "all",
   gradeLevel: GradeLevel,
-  count = 4
-): ContentItem[] {
-  const topics =
+  scrollIndex: number,
+  recent: FeedRecent
+): Topic {
+  const topicPool =
     topicFilter === "all"
-      ? topicsForGrade(gradeLevel)
+      ? shuffle(topicsForGrade(gradeLevel))
       : topicAllowedForGrade(topicFilter, gradeLevel)
         ? [topicFilter]
         : topicsForGrade(gradeLevel).slice(0, 1);
 
+  if (topicFilter !== "all") {
+    return topicPool[0];
+  }
+
+  return (
+    pickDiverse(topicPool, recent.topics, (t) => t) ??
+    topicPool[scrollIndex % topicPool.length]
+  );
+}
+
+/** Lightweight shell — teacher + lesson come from `/api/feed/reel`. */
+export function createPlaceholderReel(
+  topic: Topic,
+  gradeLevel: GradeLevel,
+  scrollIndex: number,
+  recent: FeedRecent
+): ContentItem {
+  recordTopic(recent, topic);
+
+  return {
+    id: `web-${++idCounter}-${Date.now()}-${scrollIndex}`,
+    title: "Finding a lesson…",
+    sourceUrl: "",
+    platform: "tiktok",
+    transcript: "Searching the web for something new to teach you…",
+    topics: [topic],
+    qualityScore: 0.5,
+    gradeLevel,
+    character: LOADING_PERSONALITY,
+    thumbnailColor: LOADING_PERSONALITY.color,
+    posterUrl: "",
+    talkingPortrait: true,
+    portraitStyle: "illustration",
+    portraitVariant: scrollIndex,
+    durationSec: 45,
+    viewCount: Math.floor(Math.random() * 50000) + 8000,
+    generated: true,
+    scrollIndex,
+    enrichPending: true,
+    imagePending: true,
+    wantAiPortrait: false,
+  };
+}
+
+export function createPlaceholderFeed(
+  topicFilter: Topic | "all",
+  gradeLevel: GradeLevel,
+  count: number,
+  recent: FeedRecent,
+  startIndex = 0
+): ContentItem[] {
   const items: ContentItem[] = [];
   for (let i = 0; i < count; i++) {
-    const topic = topics[i % topics.length];
-    items.push(generateInstantSlop(topic, gradeLevel));
+    const scrollIndex = startIndex + i;
+    const topic = pickTopicForFeed(
+      topicFilter,
+      gradeLevel,
+      scrollIndex,
+      recent
+    );
+    items.push(createPlaceholderReel(topic, gradeLevel, scrollIndex, recent));
   }
   return items;
 }
 
-export const PORTRAIT_URLS = [
-  "/media/newton-ai-talking.png",
-  "/media/einstein-realistic.png",
-  "/media/einstein-cartoon.png",
-  "/media/sunny-kids-3d.png",
-] as const;
-
 export function preloadPortraits(): void {
   if (typeof window === "undefined") return;
-  for (const url of PORTRAIT_URLS) {
-    const img = new window.Image();
-    img.src = url;
-  }
 }
+
+export { createFeedRecent, type FeedRecent };

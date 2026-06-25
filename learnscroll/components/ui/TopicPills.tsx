@@ -44,11 +44,11 @@ export function TopicPills({
             type="button"
             onClick={() => onChange(opt.id)}
             className={cn(
-              "flex-shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-all",
+              "flex-shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-all",
               variant === "overlay" &&
                 (active
-                  ? "bg-white/90 text-pastel-ink shadow-sm"
-                  : "bg-white/50 text-pastel-muted backdrop-blur-sm"),
+                  ? "bg-white text-pastel-ink shadow-md"
+                  : "bg-black/55 text-white ring-1 ring-inset ring-white/25 backdrop-blur-md [text-shadow:0_1px_3px_rgba(0,0,0,0.45)]"),
               variant === "page" &&
                 (active
                   ? "bg-pastel-lilac text-pastel-ink shadow-sm"

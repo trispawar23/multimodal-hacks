@@ -14,45 +14,69 @@ export const PERSONALITIES_BY_GRADE: Record<
   Partial<Record<Topic, string[]>>
 > = {
   "K-5": {
-    biology: ["sunny"],
-    math: ["sunny"],
-    history: ["sunny"],
+    biology: ["sunny", "einstein-cartoon", "darwin"],
+    math: ["sunny", "einstein-cartoon", "euler"],
+    history: ["sunny", "einstein-cartoon", "cleopatra"],
+    physics: ["sunny", "einstein-cartoon", "newton"],
   },
   "6-8": {
-    biology: ["sunny", "darwin"],
-    math: ["sunny", "euler", "hypatia"],
-    physics: ["newton", "einstein"],
-    history: ["sunny", "cleopatra"],
+    biology: ["darwin", "aristotle"],
+    math: ["euler", "hypatia", "turing", "newton"],
+    physics: ["newton", "einstein", "tesla", "curie"],
+    history: ["cleopatra", "aristotle", "shakespeare", "hypatia"],
+    chemistry: ["curie"],
+    literature: ["shakespeare", "cleopatra", "hypatia"],
+    philosophy: ["aristotle", "hypatia", "shakespeare"],
+    engineering: ["tesla", "turing", "newton"],
   },
   "9-12": {
-    physics: ["einstein", "newton", "tesla"],
-    math: ["euler", "hypatia", "turing"],
+    physics: ["newton", "einstein", "tesla", "curie"],
+    math: ["euler", "hypatia", "turing", "newton"],
     chemistry: ["curie"],
     biology: ["darwin", "aristotle"],
-    history: ["cleopatra"],
-    literature: ["shakespeare"],
-    philosophy: ["aristotle", "hypatia"],
-    engineering: ["tesla", "turing"],
+    history: ["cleopatra", "aristotle", "shakespeare", "hypatia"],
+    literature: ["shakespeare", "cleopatra", "aristotle", "hypatia"],
+    philosophy: ["aristotle", "hypatia", "shakespeare", "turing"],
+    engineering: ["tesla", "turing", "newton", "einstein"],
   },
   college: {
-    physics: ["einstein", "newton", "tesla"],
-    math: ["euler", "turing", "hypatia"],
+    physics: ["einstein", "newton", "tesla", "curie"],
+    math: ["turing", "euler", "hypatia", "newton"],
     chemistry: ["curie"],
     biology: ["darwin", "aristotle"],
-    history: ["cleopatra"],
-    literature: ["shakespeare"],
-    philosophy: ["aristotle", "hypatia"],
-    engineering: ["tesla", "turing"],
+    history: ["cleopatra", "aristotle", "shakespeare", "hypatia"],
+    literature: ["shakespeare", "cleopatra", "aristotle", "hypatia"],
+    philosophy: ["hypatia", "aristotle", "shakespeare", "turing"],
+    engineering: ["turing", "tesla", "newton", "einstein"],
   },
   graduate: {
-    physics: ["einstein", "newton"],
-    math: ["turing", "euler"],
+    physics: ["einstein", "newton", "tesla", "curie"],
+    math: ["turing", "euler", "hypatia", "newton"],
     chemistry: ["curie"],
-    biology: ["darwin"],
-    philosophy: ["aristotle", "hypatia"],
-    engineering: ["turing"],
+    biology: ["darwin", "aristotle"],
+    history: ["cleopatra", "aristotle", "hypatia"],
+    literature: ["shakespeare", "aristotle", "hypatia"],
+    philosophy: ["aristotle", "hypatia", "turing", "shakespeare"],
+    engineering: ["turing", "tesla", "einstein", "newton"],
   },
 };
+
+/** Every teacher ID available at a grade band (union of topic pools). */
+export function allTeachersForGrade(gradeLevel: GradeLevel): string[] {
+  if (gradeLevel === "K-5") return ["sunny", "einstein-cartoon"];
+
+  const ids = new Set<string>();
+  for (const grade of gradeFallbackOrder(gradeLevel)) {
+    const byTopic = PERSONALITIES_BY_GRADE[grade];
+    if (!byTopic) continue;
+    for (const pool of Object.values(byTopic)) {
+      for (const id of pool ?? []) {
+        ids.add(id);
+      }
+    }
+  }
+  return [...ids];
+}
 
 /** Safe grade lookup — never serve content above the selected grade */
 export function gradeFallbackOrder(grade: GradeLevel): GradeLevel[] {
@@ -143,7 +167,6 @@ export function adaptTemplateForGrade(
   personality: Personality,
   topic: Topic
 ): SlopTemplate {
-  const topicLabel = TOPIC_LABELS[topic].toLowerCase();
   let { title, transcript } = template;
   const { qualityScore } = template;
 
@@ -151,9 +174,6 @@ export function adaptTemplateForGrade(
     transcript = shortenSentences(transcript, 3);
     if (personality.id === "sunny" && !/^(Hi |Hey |Story)/i.test(transcript)) {
       transcript = `${K5_OPENERS[0]}${transcript.charAt(0).toLowerCase()}${transcript.slice(1)}`;
-    } else if (personality.id !== "sunny") {
-      transcript = `Hi friends! Let me tell you about ${topicLabel} in a simple way. ${transcript}`;
-      transcript = shortenSentences(transcript, 4);
     }
     title = title.replace(/—.*$/, "").slice(0, 45);
     if (!title.toLowerCase().includes("!")) title = `${title}!`;
@@ -169,19 +189,6 @@ export function adaptTemplateForGrade(
   }
 
   if (gradeLevel === "college" || gradeLevel === "graduate") {
-    if (
-      !transcript.includes("fundamental") &&
-      !transcript.includes("theorem") &&
-      personality.id !== "sunny"
-    ) {
-      const prefix =
-        gradeLevel === "graduate"
-          ? "At the graduate level, the key insight is this: "
-          : "For a deeper look: ";
-      if (!transcript.startsWith("I ") && !transcript.startsWith("At ")) {
-        transcript = `${prefix}${transcript.charAt(0).toLowerCase()}${transcript.slice(1)}`;
-      }
-    }
     return { title, transcript, qualityScore: Math.min(0.99, qualityScore + 0.02) };
   }
 

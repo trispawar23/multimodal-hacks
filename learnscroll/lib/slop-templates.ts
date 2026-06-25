@@ -36,6 +36,12 @@ const BANK: TemplateBank = {
           "Mass curves space itself. Light follows that curve, so starlight grazing the Sun appears shifted — one of the first proofs that gravity isn't just a pull between objects.",
         qualityScore: 0.96,
       },
+      {
+        title: "Orbits — falling sideways forever",
+        transcript:
+          "The Moon is constantly falling toward Earth but also moving sideways fast enough to keep missing it. That balance of speed and pull is what every orbit — satellite, planet, or comet — is built from.",
+        qualityScore: 0.93,
+      },
     ],
     college: [
       {
@@ -70,6 +76,12 @@ const BANK: TemplateBank = {
           "e to the i pi plus one equals zero ties together exponentials, circles, and negative one. It's often called the most beautiful equation because so much math meets in a single statement.",
         qualityScore: 0.95,
       },
+      {
+        title: "Prime numbers — building blocks of arithmetic",
+        transcript:
+          "Every whole number greater than one is either prime or made by multiplying primes. That simple fact powers modern encryption — and mathematicians still don't know every pattern primes hide.",
+        qualityScore: 0.92,
+      },
     ],
     college: [
       {
@@ -87,6 +99,12 @@ const BANK: TemplateBank = {
         transcript:
           "Unstable nuclei shed energy as radiation and become new elements. Marie Curie isolated radium by processing tons of ore — proving atoms aren't immutable.",
         qualityScore: 0.95,
+      },
+      {
+        title: "The periodic table — a map of the elements",
+        transcript:
+          "Elements line up by atomic number and repeating chemical behavior. That table predicts how atoms bond, react, and combine — from water to steel to the air you breathe.",
+        qualityScore: 0.92,
       },
     ],
     college: [
@@ -174,6 +192,12 @@ const BANK: TemplateBank = {
           "Juliet is not literally the sun — Shakespeare compares her warmth and light to the sun's. Metaphor packs feeling and image into a single striking phrase.",
         qualityScore: 0.9,
       },
+      {
+        title: "Dramatic irony — the audience knows more",
+        transcript:
+          "When the audience understands a danger the characters don't, tension builds with every innocent line. Greek tragedy and modern film both lean on that gap between what we know and what they know.",
+        qualityScore: 0.89,
+      },
     ],
     college: [
       {
@@ -218,6 +242,12 @@ const BANK: TemplateBank = {
           "Tesla championed AC because voltage could be stepped up for long-distance transmission, then stepped down safely in homes — making the grid we use today possible.",
         qualityScore: 0.93,
       },
+      {
+        title: "Bridges and load — spreading force safely",
+        transcript:
+          "Engineers shape arches and trusses so weight spreads through a structure instead of crushing one point. Good design turns invisible forces into forms you can see and trust.",
+        qualityScore: 0.9,
+      },
     ],
     college: [
       {
@@ -232,7 +262,8 @@ const BANK: TemplateBank = {
 
 export function pickGenericTemplate(
   topic: Topic,
-  gradeLevel: GradeLevel
+  gradeLevel: GradeLevel,
+  excludeTitles: string[] = []
 ): SlopTemplate {
   const byTopic = BANK[topic];
   const fallback: SlopTemplate = {
@@ -247,7 +278,9 @@ export function pickGenericTemplate(
   for (const grade of gradeFallbackOrder(gradeLevel)) {
     const pool = byTopic[grade];
     if (pool?.length) {
-      return pool[Math.floor(Math.random() * pool.length)];
+      const fresh = pool.filter((t) => !excludeTitles.includes(t.title));
+      const candidates = fresh.length ? fresh : pool;
+      return candidates[Math.floor(Math.random() * candidates.length)];
     }
   }
 
@@ -257,7 +290,14 @@ export function pickGenericTemplate(
 export function pickTemplate(
   topic: Topic,
   gradeLevel: GradeLevel,
-  personality: Personality
+  personality: Personality,
+  excludeTitles: string[] = []
 ): SlopTemplate {
-  return pickVoicedTemplate(pickGenericTemplate, topic, gradeLevel, personality);
+  return pickVoicedTemplate(
+    (t, g) => pickGenericTemplate(t, g, excludeTitles),
+    topic,
+    gradeLevel,
+    personality,
+    excludeTitles
+  );
 }

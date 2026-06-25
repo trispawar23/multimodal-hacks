@@ -50,8 +50,10 @@ export async function playGeminiVoice(
   text: string,
   character: AICharacter,
   options: {
+    onStart?: () => void;
     onEnd?: () => void;
     fallback?: () => void;
+    gradeLevel?: string;
   } = {}
 ): Promise<boolean> {
   const startedAt = performance.now();
@@ -63,7 +65,14 @@ export async function playGeminiVoice(
     const res = await fetch("/api/voice/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, characterId: character.id }),
+      body: JSON.stringify({
+        text,
+        characterId: character.id,
+        characterName: character.name,
+        voiceGender:
+          "voiceGender" in character ? character.voiceGender : undefined,
+        gradeLevel: options.gradeLevel,
+      }),
     });
     const responseAt = performance.now();
     const data = (await res.json()) as {
@@ -81,6 +90,7 @@ export async function playGeminiVoice(
     const url = pcmBase64ToWavUrl(data.audio, data.sampleRate ?? 24000);
     const wavReadyAt = performance.now();
     const audio = new Audio(url);
+    audio.playbackRate = 1;
     currentUrl = url;
     currentAudio = audio;
     audio.onended = () => {
@@ -93,6 +103,7 @@ export async function playGeminiVoice(
       options.onEnd?.();
     };
     await audio.play();
+    options.onStart?.();
     const playingAt = performance.now();
     voiceLog("tts.client.playing", {
       characterId: character.id,
