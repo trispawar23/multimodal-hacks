@@ -1,13 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateCharacterReply } from "@/lib/gemini";
 import { buildLocalCharacterReply } from "@/lib/local-character-reply";
-import { getPersonality } from "@/lib/personalities";
+import { generateOpenAICharacterReply, openAIVoiceEnabled, type VoiceCharacter } from "@/lib/openai-voice";
+import { getPersonality, type Personality } from "@/lib/personalities";
 import type { GradeLevel, Topic } from "@/lib/types";
 
 export const maxDuration = 30;
 
 function voiceSessionLog(event: string, details: Record<string, unknown> = {}) {
   console.log(`[Luminary:Voice:Session] ${event}`, JSON.stringify(details, null, 2));
+}
+
+function personalityFromVoiceCharacter(
+  character: VoiceCharacter | undefined,
+  fallback: Personality,
+  topics: Topic[]
+): Personality {
+  if (!character) return fallback;
+  return {
+    ...fallback,
+    id: character.id,
+    name: character.name,
+    era: character.era,
+    subjects: character.subjects.length ? character.subjects : topics,
+    initial: character.initial,
+    color: character.color,
+    voiceGender: character.voiceGender ?? fallback.voiceGender,
+    voicePitch: character.voicePitch ?? fallback.voicePitch,
+    voiceRate: character.voiceRate ?? fallback.voiceRate,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -19,6 +39,8 @@ export async function POST(req: NextRequest) {
     transcript?: string;
     gradeLevel?: GradeLevel;
     topics?: Topic[];
+    character?: VoiceCharacter;
+    responseMode?: "instant" | "openai";
     history?: { role: "user" | "character"; text: string }[];
   };
 
@@ -33,6 +55,11 @@ export async function POST(req: NextRequest) {
     const transcript = body.transcript ?? "";
     const gradeLevel: GradeLevel = body.gradeLevel ?? "9-12";
     const topics = body.topics ?? personality.subjects;
+    const voicePersonality = personalityFromVoiceCharacter(
+      body.character,
+      personality,
+      topics
+    );
     const history = body.history ?? [];
 
     voiceSessionLog("request.start", {
@@ -42,43 +69,52 @@ export async function POST(req: NextRequest) {
       transcriptLength: transcript.length,
       gradeLevel,
       topics,
+      characterName: voicePersonality.name,
+      characterEra: voicePersonality.era,
       historyTurns: history.length,
     });
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (body.responseMode === "instant" || !openAIVoiceEnabled()) {
       const answer = buildLocalCharacterReply(
-        personality,
+        voicePersonality,
         question.trim(),
         { title, transcript, gradeLevel, topics },
         history
       );
-      voiceSessionLog("request.fallback.no_api_key", {
+      voiceSessionLog(
+        body.responseMode === "instant"
+          ? "request.instant.local_reply"
+          : "request.fallback.no_openai_api_key",
+        {
         characterId,
         answerLength: answer.length,
         totalMs: Date.now() - startedAt,
-      });
+        }
+      );
       return NextResponse.json({
         answer,
         characterId,
         grounded: true,
-        fallback: true,
+        fallback: body.responseMode !== "instant",
+        provider: "local",
       });
     }
 
-    const geminiStartedAt = Date.now();
-    const answer = await generateCharacterReply(
+    const openAIStartedAt = Date.now();
+    const answer = await generateOpenAICharacterReply(
       characterId,
       question.trim(),
-      { title, transcript, gradeLevel, topics },
+      { title, transcript, gradeLevel, topics, character: voicePersonality },
       history
     );
-    const geminiFinishedAt = Date.now();
+    const openAIFinishedAt = Date.now();
 
     voiceSessionLog("request.success", {
       characterId,
       answerLength: answer.length,
-      geminiMs: geminiFinishedAt - geminiStartedAt,
-      totalMs: geminiFinishedAt - startedAt,
+      provider: "openai",
+      openAIMs: openAIFinishedAt - openAIStartedAt,
+      totalMs: openAIFinishedAt - startedAt,
     });
 
     return NextResponse.json({
@@ -86,6 +122,7 @@ export async function POST(req: NextRequest) {
       characterId,
       grounded: true,
       fallback: false,
+      provider: "openai",
     });
   } catch (error) {
     console.error("Voice session error:", error);
@@ -97,14 +134,20 @@ export async function POST(req: NextRequest) {
 
     try {
       const personality = getPersonality(body.characterId);
-      const answer = buildLocalCharacterReply(
+      const topics = body.topics ?? personality.subjects;
+      const voicePersonality = personalityFromVoiceCharacter(
+        body.character,
         personality,
+        topics
+      );
+      const answer = buildLocalCharacterReply(
+        voicePersonality,
         body.question?.trim() ?? "",
         {
           title: body.title ?? "this lesson",
           transcript: body.transcript ?? "",
           gradeLevel: body.gradeLevel ?? "9-12",
-          topics: body.topics ?? personality.subjects,
+          topics,
         },
         body.history ?? []
       );

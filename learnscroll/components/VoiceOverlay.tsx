@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContentItem } from "@/lib/types";
-import { speakAsCharacter, stopCharacterSpeech } from "@/lib/character-voice";
+import { speakAsCharacter } from "@/lib/character-voice";
 import { readFeedMuted } from "@/lib/feed-audio";
 import { playCharacterVoice, stopAllCharacterSpeech } from "@/lib/voice-playback";
 import { isSpeechInputSupported, listenForSpeech } from "@/lib/speech-input";
@@ -86,6 +86,7 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             characterId: char.id,
+            character: char,
             question: trimmed,
             title: content.title,
             transcript: content.transcript,
@@ -101,7 +102,7 @@ export function VoiceOverlay({ content, onClose }: VoiceOverlayProps) {
           "My apologies — I lost my train of thought. Could you ask again?";
 
         setMessages((prev) => [...prev, { role: "character", text: answer }]);
-        await playCharacterVoice(answer, char, {
+        void playCharacterVoice(answer, char, {
           force: true,
           gradeLevel: content.gradeLevel,
         });

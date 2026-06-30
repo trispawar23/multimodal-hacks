@@ -40,6 +40,14 @@ export function isSpeechInputSupported(): boolean {
   return getSpeechRecognition() !== null;
 }
 
+export function isOpenAIHoldToSpeakSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    typeof navigator.mediaDevices?.getUserMedia === "function" &&
+      typeof window.MediaRecorder !== "undefined"
+  );
+}
+
 export interface SpeechListenOptions {
   onInterim?: (text: string) => void;
   onFinal: (text: string) => void;
@@ -109,7 +117,13 @@ export function listenForSpeech({
 
 export interface HoldToSpeakSession {
   stop: () => Promise<string>;
+  stopAudio?: () => Promise<RecordedSpeech | null>;
   cancel: () => void;
+}
+
+export interface RecordedSpeech {
+  audio: Blob;
+  filename: string;
 }
 
 /** Keep listening while pointer is held; resolve transcript on release */
@@ -128,25 +142,37 @@ export function startHoldToSpeak(options: {
   recognition.continuous = true;
   recognition.interimResults = true;
 
-  let transcript = "";
+  let finalText = "";
+  let interimText = "";
   let settled = false;
+  let stopping = false;
 
   recognition.onresult = (event: SpeechRecognitionEventLike) => {
     let interim = "";
-    for (let i = 0; i < event.results.length; i++) {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
       const chunk = event.results[i][0]?.transcript ?? "";
       if (event.results[i].isFinal) {
-        transcript += `${chunk} `;
+        finalText += `${chunk} `;
       } else {
         interim += chunk;
       }
     }
-    options.onInterim?.(`${transcript}${interim}`.trim());
+    interimText = interim.trim();
+    options.onInterim?.(`${finalText}${interimText}`.trim());
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
     if (event.error !== "aborted" && event.error !== "no-speech") {
       options.onError?.(event.error);
+    }
+  };
+
+  recognition.onend = () => {
+    if (settled || stopping) return;
+    try {
+      recognition.start();
+    } catch {
+      /* The user can release and resolve the latest heard text. */
     }
   };
 
@@ -160,17 +186,26 @@ export function startHoldToSpeak(options: {
   return {
     stop: () =>
       new Promise((resolve) => {
+        const heardText = () => (finalText.trim() || interimText.trim()).trim();
         if (settled) {
-          resolve(transcript.trim());
+          resolve(heardText());
           return;
         }
         settled = true;
-        recognition.onend = () => resolve(transcript.trim());
+        stopping = true;
+        let resolved = false;
+        const finish = () => {
+          if (resolved) return;
+          resolved = true;
+          resolve(heardText());
+        };
+        recognition.onend = finish;
+        window.setTimeout(finish, 500);
         try {
           recognition.stop();
         } catch {
           recognition.abort();
-          resolve(transcript.trim());
+          finish();
         }
       }),
     cancel: () => {
@@ -183,4 +218,146 @@ export function startHoldToSpeak(options: {
       }
     },
   };
+}
+
+function preferredAudioMimeType(): string {
+  const options = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+  ];
+  return options.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
+async function transcribeAudio(audio: Blob): Promise<string> {
+  const form = new FormData();
+  const extension = audio.type.includes("mp4") ? "mp4" : "webm";
+  form.append("audio", audio, `question.${extension}`);
+
+  const res = await fetch("/api/voice/transcribe", {
+    method: "POST",
+    body: form,
+  });
+  const data = (await res.json()) as { text?: string; error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? "Could not transcribe audio");
+  }
+  return data.text?.trim() ?? "";
+}
+
+function recordedSpeechFromChunks(
+  chunks: BlobPart[],
+  mimeType: string
+): RecordedSpeech | null {
+  if (!chunks.length) return null;
+  const audio = new Blob(chunks, { type: mimeType || "audio/webm" });
+  const extension = audio.type.includes("mp4") ? "mp4" : "webm";
+  return { audio, filename: `question.${extension}` };
+}
+
+/** Record while pointer is held; transcribe the audio with OpenAI on release. */
+export async function startOpenAIHoldToSpeak(options: {
+  onError?: (message: string) => void;
+}): Promise<HoldToSpeakSession | null> {
+  if (!isOpenAIHoldToSpeakSupported()) {
+    options.onError?.("Speech recording not supported");
+    return null;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = preferredAudioMimeType();
+    const recorder = new MediaRecorder(
+      stream,
+      mimeType ? { mimeType } : undefined
+    );
+    const chunks: BlobPart[] = [];
+    let settled = false;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.start();
+
+    const stopTracks = () => {
+      stream.getTracks().forEach((track) => track.stop());
+    };
+
+    return {
+      stop: () =>
+        new Promise((resolve) => {
+          if (settled) {
+            resolve("");
+            return;
+          }
+          settled = true;
+          recorder.onstop = () => {
+            stopTracks();
+            if (!chunks.length) {
+              resolve("");
+              return;
+            }
+            const recorded = recordedSpeechFromChunks(
+              chunks,
+              recorder.mimeType || "audio/webm"
+            );
+            if (!recorded) {
+              resolve("");
+              return;
+            }
+            void transcribeAudio(recorded.audio)
+              .then(resolve)
+              .catch((error) => {
+                options.onError?.(
+                  error instanceof Error ? error.message : "Could not transcribe audio"
+                );
+                resolve("");
+              });
+          };
+          try {
+            recorder.stop();
+          } catch {
+            stopTracks();
+            resolve("");
+          }
+        }),
+      stopAudio: () =>
+        new Promise((resolve) => {
+          if (settled) {
+            resolve(null);
+            return;
+          }
+          settled = true;
+          recorder.onstop = () => {
+            stopTracks();
+            resolve(
+              recordedSpeechFromChunks(chunks, recorder.mimeType || "audio/webm")
+            );
+          };
+          try {
+            recorder.stop();
+          } catch {
+            stopTracks();
+            resolve(null);
+          }
+        }),
+      cancel: () => {
+        if (settled) return;
+        settled = true;
+        try {
+          if (recorder.state !== "inactive") recorder.stop();
+        } catch {
+          /* ignore */
+        }
+        stopTracks();
+      },
+    };
+  } catch (error) {
+    const message =
+      error instanceof DOMException && error.name === "NotAllowedError"
+        ? "not-allowed"
+        : "Could not start microphone";
+    options.onError?.(message);
+    return null;
+  }
 }

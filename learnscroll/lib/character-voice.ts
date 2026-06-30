@@ -10,10 +10,16 @@ function isPersonality(c: AICharacter): c is Personality {
   return "voicePitch" in c && "voiceGender" in c;
 }
 
-/** High-quality voices — tried in order on each platform. */
+/** Natural browser voices — tried in order on each platform. */
 const QUALITY_VOICE_NAMES = [
-  "Samantha",
   "Alex",
+  "Microsoft Aria Online",
+  "Microsoft Guy Online",
+  "Microsoft Jenny Online",
+  "Google US English",
+  "Google UK English Male",
+  "Google UK English Female",
+  "Samantha",
   "Karen",
   "Daniel",
   "Victoria",
@@ -39,22 +45,171 @@ const QUALITY_VOICE_NAMES = [
 ];
 
 const ROBOTIC_VOICE =
-  /espeak|android|compact|mobile|offline|novelty|bad news|bells|bubble|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|zarvox|bahh|boing|bubbles|junior|pipe|ralph|trinoids|whisper/i;
+  /espeak|android|compact|mobile|novelty|bad news|bells|bubble|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|zarvox|bahh|boing|bubbles|junior|pipe|ralph|trinoids|whisper/i;
 
 const PERSONALITY_VOICE_NAMES: Record<string, string[]> = {
-  newton: ["Daniel", "Arthur", "Fred", "James", "Microsoft David"],
-  einstein: ["Alex", "Oliver", "Aaron", "Mark", "Rishi"],
-  "einstein-cartoon": ["Alex", "Oliver", "Aaron", "Junior", "Kathy"],
-  darwin: ["Jamie", "Tom", "Daniel", "Fred"],
-  euler: ["Thomas", "Arthur", "Daniel"],
-  turing: ["Ryan", "Oliver", "Alex", "Aaron"],
-  tesla: ["Tom", "Fred", "Daniel", "Jacques"],
-  aristotle: ["Fred", "Arthur", "Daniel", "James"],
-  shakespeare: ["Oliver", "Arthur", "Daniel", "Alex"],
-  curie: ["Samantha", "Karen", "Victoria", "Moira", "Microsoft Zira"],
-  hypatia: ["Victoria", "Moira", "Serena", "Samantha"],
-  cleopatra: ["Samantha", "Karen", "Fiona", "Tessa"],
-  sunny: ["Samantha", "Karen", "Zoe", "Tessa"],
+  newton: ["Microsoft Guy Online", "Daniel", "Arthur", "James", "Google UK English Male"],
+  einstein: ["Alex", "Microsoft Guy Online", "Google US English", "Oliver", "Aaron"],
+  "einstein-cartoon": ["Google US English", "Alex", "Samantha", "Oliver"],
+  darwin: ["Google UK English Male", "Daniel", "Jamie", "Tom"],
+  euler: ["Microsoft Guy Online", "Thomas", "Arthur", "Daniel"],
+  turing: ["Microsoft Guy Online", "Alex", "Oliver", "Ryan"],
+  tesla: ["Microsoft Guy Online", "Google US English", "Tom", "Daniel"],
+  aristotle: ["Google UK English Male", "Arthur", "Daniel", "James"],
+  shakespeare: ["Google UK English Male", "Oliver", "Arthur", "Daniel"],
+  curie: ["Microsoft Jenny Online", "Microsoft Aria Online", "Samantha", "Karen", "Victoria"],
+  hypatia: ["Microsoft Aria Online", "Victoria", "Moira", "Serena", "Samantha"],
+  cleopatra: ["Microsoft Aria Online", "Samantha", "Karen", "Fiona", "Tessa"],
+  sunny: ["Google US English", "Microsoft Jenny Online", "Samantha", "Karen", "Tessa"],
+};
+
+const FIGURE_VOICE_NAMES: Record<string, string[]> = {
+  leonardo: [
+    "Daniel",
+    "Google UK English Male",
+    "Microsoft Guy Online",
+    "Alex",
+    "Arthur",
+  ],
+  descartes: [
+    "Thomas",
+    "Daniel",
+    "Microsoft Guy Online",
+    "Google UK English Male",
+    "Arthur",
+  ],
+  galileo: [
+    "Daniel",
+    "Google UK English Male",
+    "Microsoft Guy Online",
+    "Alex",
+  ],
+  ada: [
+    "Microsoft Aria Online",
+    "Victoria",
+    "Samantha",
+    "Serena",
+  ],
+  lovelace: [
+    "Microsoft Aria Online",
+    "Victoria",
+    "Samantha",
+    "Serena",
+  ],
+  washington: [
+    "Microsoft Guy Online",
+    "Alex",
+    "Daniel",
+    "Google US English",
+    "Arthur",
+  ],
+  lincoln: [
+    "Alex",
+    "Microsoft Guy Online",
+    "Daniel",
+    "Google US English",
+    "Fred",
+  ],
+  franklin: [
+    "Alex",
+    "Google US English",
+    "Microsoft Guy Online",
+    "Daniel",
+  ],
+  napoleon: [
+    "Thomas",
+    "Daniel",
+    "Microsoft Guy Online",
+    "Google UK English Male",
+  ],
+  "american-statesman": [
+    "Microsoft Guy Online",
+    "Alex",
+    "Google US English",
+    "Daniel",
+  ],
+  ruler: [
+    "Daniel",
+    "Google UK English Male",
+    "Microsoft Guy Online",
+    "Arthur",
+  ],
+  "female-ruler": [
+    "Microsoft Aria Online",
+    "Victoria",
+    "Samantha",
+    "Serena",
+  ],
+  scientist: [
+    "Alex",
+    "Microsoft Guy Online",
+    "Google US English",
+    "Daniel",
+  ],
+  "female-scholar": [
+    "Microsoft Aria Online",
+    "Microsoft Jenny Online",
+    "Samantha",
+    "Victoria",
+  ],
+  writer: [
+    "Oliver",
+    "Google UK English Male",
+    "Alex",
+    "Daniel",
+  ],
+  "female-writer": [
+    "Serena",
+    "Samantha",
+    "Microsoft Aria Online",
+    "Victoria",
+  ],
+  ancient: [
+    "Arthur",
+    "Fred",
+    "Daniel",
+    "Google UK English Male",
+  ],
+};
+
+const FIGURE_RATE: Record<string, number> = {
+  leonardo: 0.89,
+  descartes: 0.9,
+  galileo: 0.91,
+  ada: 0.94,
+  lovelace: 0.94,
+  washington: 0.88,
+  lincoln: 0.86,
+  franklin: 0.92,
+  napoleon: 0.91,
+  "american-statesman": 0.89,
+  ruler: 0.88,
+  "female-ruler": 0.91,
+  scientist: 0.94,
+  "female-scholar": 0.95,
+  writer: 0.9,
+  "female-writer": 0.94,
+  ancient: 0.86,
+};
+
+const FIGURE_PITCH: Record<string, number> = {
+  leonardo: 0.91,
+  descartes: 0.92,
+  galileo: 0.93,
+  ada: 1.01,
+  lovelace: 1.01,
+  washington: 0.88,
+  lincoln: 0.9,
+  franklin: 0.94,
+  napoleon: 0.89,
+  "american-statesman": 0.9,
+  ruler: 0.88,
+  "female-ruler": 1,
+  scientist: 0.95,
+  "female-scholar": 1.01,
+  writer: 0.96,
+  "female-writer": 1.02,
+  ancient: 0.9,
 };
 
 function synth(): SpeechSynthesis | null {
@@ -101,14 +256,89 @@ function isFemaleVoice(name: string): boolean {
   );
 }
 
+function normalizedCharacterText(character: AICharacter): string {
+  return [
+    character.id,
+    character.name,
+    character.era,
+    character.subjects.join(" "),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function figureKey(character: AICharacter): string | null {
+  const text = normalizedCharacterText(character);
+  if (/\bleonardo\b|\bvinci\b/.test(text)) return "leonardo";
+  if (/\bdescartes\b/.test(text)) return "descartes";
+  if (/\bgalileo\b/.test(text)) return "galileo";
+  if (/\bada\b|\blovelace\b/.test(text)) return "ada";
+  if (/\bgeorge washington\b|\bwashington\b/.test(text)) return "washington";
+  if (/\babraham lincoln\b|\blincoln\b/.test(text)) return "lincoln";
+  if (/\bbenjamin franklin\b|\bfranklin\b/.test(text)) return "franklin";
+  if (/\bnapoleon\b|\bbonaparte\b/.test(text)) return "napoleon";
+  if (/\bpresident\b|\bfounding father\b|\bstatesman\b|\brevolutionary\b|\bamerican revolution\b/.test(text)) {
+    return "american-statesman";
+  }
+  if (/\bqueen\b|\bempress\b|\bprincess\b|\bhatshepsut\b|\belizabeth\b|\bcatherine\b|\bjoan of arc\b/.test(text)) {
+    return "female-ruler";
+  }
+  if (/\bking\b|\bemperor\b|\bruler\b|\bcaesar\b|\balexander\b|\bgenghis\b|\bkhan\b|\bcharlemagne\b|\bramesses\b|\bsuleiman\b|\bashoka\b/.test(text)) {
+    return "ruler";
+  }
+  if (/\bancient\b|\bbc\b|\bgreek\b|\broman\b|\begyptian\b|\bmesopotamian\b/.test(text)) {
+    return "ancient";
+  }
+  if (/\bnovelist\b|\bpoet\b|\bwriter\b|\bauthor\b|\bplaywright\b|\bliterature\b|\bausten\b|\btwain\b|\bhomer\b/.test(text)) {
+    return inferredVoiceGender(character) === "female" ? "female-writer" : "writer";
+  }
+  if (/\bscientist\b|\bphysicist\b|\bchemist\b|\bmathematician\b|\bengineer\b|\binventor\b|\bastronomer\b|\bbiology\b|\bphysics\b|\bchemistry\b|\bmath\b|\bengineering\b/.test(text)) {
+    return inferredVoiceGender(character) === "female" ? "female-scholar" : "scientist";
+  }
+  return null;
+}
+
+function inferredVoiceGender(
+  character: AICharacter
+): "male" | "female" | "neutral" {
+  if (isPersonality(character)) return character.voiceGender;
+  const text = normalizedCharacterText(character);
+  if (
+    /\bmarie\b|\bcurie\b|\bhypatia\b|\bcleopatra\b|\bada\b|\blovelace\b|\bjane\b|\bemmy\b|\bnoether\b|\bflorence\b|\brosalind\b|\bharriet\b|\bsacagawea\b|\bpocahontas\b|\bamelia\b|\brachel\b|\bsofia\b|\belizabeth\b|\bcatherine\b|\bjoan\b|\bhatshepsut\b/.test(
+      text
+    )
+  ) {
+    return "female";
+  }
+  if (
+    /\bleonardo\b|\bvinci\b|\bdescartes\b|\bgalileo\b|\bnewton\b|\beinstein\b|\bdarwin\b|\btesla\b|\baristotle\b|\bshakespeare\b|\bgeorge\b|\bwashington\b|\blincoln\b|\bfranklin\b|\bnapoleon\b|\bcaesar\b|\balexander\b|\bgenghis\b|\bkhan\b|\bcharlemagne\b|\bramesses\b|\bsuleiman\b|\bashoka\b/.test(
+      text
+    )
+  ) {
+    return "male";
+  }
+  return "neutral";
+}
+
+function voicePreferencesForCharacter(character: AICharacter): string[] {
+  const figure = figureKey(character);
+  if (figure) return FIGURE_VOICE_NAMES[figure] ?? [];
+  return PERSONALITY_VOICE_NAMES[character.id] ?? [];
+}
+
 function voiceQualityScore(voice: SpeechSynthesisVoice): number {
   let score = 0;
-  if (voice.localService) score += 20;
+  const signature = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+  if (voice.default) score += 4;
+  if (voice.localService) score += 6;
   if (voice.lang === "en-US" || voice.lang === "en-GB") score += 8;
+  if (/online|natural|neural|premium|enhanced|google|siri/i.test(signature)) {
+    score += 45;
+  }
   if (ROBOTIC_VOICE.test(voice.name)) score -= 200;
 
   for (let i = 0; i < QUALITY_VOICE_NAMES.length; i += 1) {
-    if (voice.name.includes(QUALITY_VOICE_NAMES[i])) {
+    if (voice.name.toLowerCase().includes(QUALITY_VOICE_NAMES[i].toLowerCase())) {
       score += 120 - i * 3;
       break;
     }
@@ -119,10 +349,7 @@ function voiceQualityScore(voice: SpeechSynthesisVoice): number {
 
 function usableVoices(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
   const filtered = voices.filter((v) => !ROBOTIC_VOICE.test(v.name));
-  const local = filtered.filter((v) => v.localService);
-  const pool = (local.length ? local : filtered).sort(
-    (a, b) => voiceQualityScore(b) - voiceQualityScore(a)
-  );
+  const pool = filtered.sort((a, b) => voiceQualityScore(b) - voiceQualityScore(a));
   return pool.length ? pool : voices;
 }
 
@@ -146,15 +373,11 @@ function pickVoice(
   const pool = usableVoices(voices);
   if (!pool.length) return null;
 
-  if (!isPersonality(character)) {
-    return pool[0];
-  }
-
-  const prefs = PERSONALITY_VOICE_NAMES[character.id] ?? [];
+  const prefs = voicePreferencesForCharacter(character);
   const named = matchByName(pool, prefs);
   if (named) return named;
 
-  const gender = character.voiceGender;
+  const gender = inferredVoiceGender(character);
   const genderPool =
     gender === "female"
       ? pool.filter((v) => isFemaleVoice(v.name))
@@ -168,15 +391,39 @@ function pickVoice(
 }
 
 function speechRate(character: AICharacter): number {
-  if (!isPersonality(character)) return 0.98;
-  const base = Math.min(1.02, Math.max(0.92, character.voiceRate));
-  return Math.round(base * 0.98 * 100) / 100;
+  const figure = figureKey(character);
+  if (figure && FIGURE_RATE[figure]) return FIGURE_RATE[figure];
+  if (!isPersonality(character)) return 0.92;
+  const base = Math.min(1, Math.max(0.88, character.voiceRate));
+  const characterRates: Record<string, number> = {
+    shakespeare: 0.9,
+    aristotle: 0.9,
+    newton: 0.91,
+    curie: 0.94,
+    cleopatra: 0.93,
+    sunny: 1,
+    "einstein-cartoon": 0.98,
+  };
+  return Math.round((characterRates[character.id] ?? base * 0.94) * 100) / 100;
 }
 
 function speechPitch(character: AICharacter): number {
-  if (!isPersonality(character)) return 1;
-  // Keep pitch near neutral — extreme values sound robotic.
-  return Math.min(1.04, Math.max(0.94, character.voicePitch));
+  const figure = figureKey(character);
+  if (figure && FIGURE_PITCH[figure]) return FIGURE_PITCH[figure];
+  if (!isPersonality(character)) return inferredVoiceGender(character) === "female" ? 1.01 : 0.94;
+  const characterPitches: Record<string, number> = {
+    shakespeare: 0.93,
+    aristotle: 0.92,
+    newton: 0.94,
+    darwin: 0.94,
+    tesla: 0.96,
+    curie: 1.02,
+    hypatia: 1.01,
+    cleopatra: 1.02,
+    sunny: 1.04,
+    "einstein-cartoon": 1.03,
+  };
+  return characterPitches[character.id] ?? Math.min(1.03, Math.max(0.95, character.voicePitch));
 }
 
 function humanizeForSpeech(text: string): string {

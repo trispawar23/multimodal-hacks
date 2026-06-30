@@ -5,7 +5,7 @@ import type { ContentItem, PortraitStyle } from "@/lib/types";
 import { topicPastels } from "@/lib/tokens";
 import { onFeedSpeechUnlock, unlockFeedSpeech } from "@/lib/feed-audio";
 import { playCharacterVoice, stopAllCharacterSpeech } from "@/lib/voice-playback";
-import { isSpeechInputSupported, listenForSpeech, startHoldToSpeak, type HoldToSpeakSession } from "@/lib/speech-input";
+import { isOpenAIHoldToSpeakSupported, listenForSpeech, startOpenAIHoldToSpeak, type HoldToSpeakSession, type RecordedSpeech } from "@/lib/speech-input";
 import { PortraitLoadingOverlay } from "./PortraitLoadingOverlay";
 import { isPortraitUrlForCharacter } from "@/lib/portrait-validation";
 import { cn } from "./ui/cn";
@@ -19,7 +19,7 @@ interface ReelSlideProps {
   onSave: () => void;
   onQuiz?: () => void;
   onToggleMute?: () => void;
-  onVisibilityChange?: (id: string, visible: boolean) => void;
+  onVisibilityChange?: (id: string, visible: boolean, ratio?: number) => void;
   onPortraitBroken?: (id: string) => void;
 }
 
@@ -94,14 +94,16 @@ function TalkButton({
   onPhaseChange: (phase: TalkPhase) => void;
 }) {
   const [phase, setPhase] = useState<TalkPhase>("idle");
-  const [interim, setInterim] = useState("");
+  const [, setInterim] = useState("");
   const [micError, setMicError] = useState("");
   const sessionRef = useRef<HoldToSpeakSession | null>(null);
   const stopOpenMicRef = useRef<(() => void) | null>(null);
   const historyRef = useRef<{ role: "user" | "character"; text: string }[]>([]);
   const holdingRef = useRef(false);
+  const releasePendingRef = useRef(false);
+  const holdStartIdRef = useRef(0);
   const phaseRef = useRef<TalkPhase>("idle");
-  const supported = isSpeechInputSupported();
+  const supported = isOpenAIHoldToSpeakSupported();
   const lessonReady =
     !item.enrichPending && item.character.id !== "loading" && item.title !== "Could not load lesson";
 
@@ -120,6 +122,7 @@ function TalkButton({
     sessionRef.current?.cancel();
     sessionRef.current = null;
     holdingRef.current = false;
+    releasePendingRef.current = false;
     setInterim("");
   }, []);
 
@@ -143,6 +146,8 @@ function TalkButton({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             characterId: item.character.id,
+            character: item.character,
+            responseMode: "openai",
             question: trimmed,
             title: item.title,
             transcript: item.transcript,
@@ -170,12 +175,95 @@ function TalkButton({
         }
 
         setTalkPhase("answering");
-        await playCharacterVoice(answer, item.character, {
+        void playCharacterVoice(answer, item.character, {
           force: true,
           muted,
           speechOwner: item.id,
           gradeLevel: item.gradeLevel,
-          onEnd: () => setTalkPhase("idle"),
+          onEnd: () => {
+            if (phaseRef.current === "answering") setTalkPhase("idle");
+          },
+        });
+      } catch {
+        setMicError("Could not reach the teacher — try again.");
+        setTalkPhase("idle");
+      }
+    },
+    [item, muted, setTalkPhase]
+  );
+
+  const sendRecordedQuestion = useCallback(
+    async (recorded: RecordedSpeech | null) => {
+      if (!recorded) {
+        setMicError("I didn't catch that");
+        setTalkPhase("idle");
+        return;
+      }
+
+      setTalkPhase("thinking");
+      stopAllCharacterSpeech(item.id);
+
+      try {
+        const prior = historyRef.current.filter(
+          (t) => t.role === "user" || t.role === "character"
+        );
+        const form = new FormData();
+        form.append("audio", recorded.audio, recorded.filename);
+        form.append(
+          "payload",
+          JSON.stringify({
+            characterId: item.character.id,
+            character: item.character,
+            title: item.title,
+            transcript: item.transcript,
+            gradeLevel: item.gradeLevel,
+            topics: item.topics,
+            history: prior,
+          })
+        );
+
+        const res = await fetch("/api/voice/turn", {
+          method: "POST",
+          body: form,
+        });
+        const data = (await res.json()) as {
+          question?: string;
+          answer?: string;
+          error?: string;
+        };
+        const question = data.question?.trim() ?? "";
+        if (!question) {
+          setMicError(data.error ?? "I didn't catch that");
+          setTalkPhase("idle");
+          return;
+        }
+
+        const answer =
+          data.answer ??
+          (res.ok
+            ? "I lost my train of thought — try asking again."
+            : "I couldn't answer that — try rephrasing your question.");
+
+        historyRef.current = [
+          ...prior,
+          { role: "user" as const, text: question },
+          { role: "character" as const, text: answer },
+        ].slice(-10);
+
+        if (muted) {
+          setTalkPhase("idle");
+          return;
+        }
+
+        setTalkPhase("answering");
+        void playCharacterVoice(answer, item.character, {
+          force: true,
+          muted,
+          speechOwner: item.id,
+          gradeLevel: item.gradeLevel,
+          onEnd: () => {
+            if (phaseRef.current === "answering") setTalkPhase("idle");
+          },
         });
       } catch {
         setMicError("Could not reach the teacher — try again.");
@@ -186,56 +274,83 @@ function TalkButton({
   );
 
   const finishHold = useCallback(async () => {
-    if (!holdingRef.current) return;
+    if (!holdingRef.current && !sessionRef.current) return;
     holdingRef.current = false;
+    releasePendingRef.current = true;
 
     const session = sessionRef.current;
     sessionRef.current = null;
     if (!session) {
       setInterim("");
-      setTalkPhase("idle");
+      return;
+    }
+    releasePendingRef.current = false;
+
+    setTalkPhase("thinking");
+    const recorded = session.stopAudio
+      ? await session.stopAudio()
+      : null;
+    setInterim("");
+    if (recorded) {
+      await sendRecordedQuestion(recorded);
       return;
     }
 
     const question = await session.stop();
-    setInterim("");
+    if (!question.trim()) {
+      setMicError("I didn't catch that");
+      setTalkPhase("idle");
+      return;
+    }
     await sendQuestion(question);
-  }, [sendQuestion, setTalkPhase]);
+  }, [sendQuestion, sendRecordedQuestion, setTalkPhase]);
 
-  const startHold = useCallback(() => {
+  const startHold = useCallback(async () => {
     setMicError("");
     unlockFeedSpeech();
     stopAllCharacterSpeech(item.id);
     stopMic();
 
     holdingRef.current = true;
+    releasePendingRef.current = false;
     setTalkPhase("listening");
+    const holdStartId = holdStartIdRef.current + 1;
+    holdStartIdRef.current = holdStartId;
 
-    const session = startHoldToSpeak({
-      onInterim: setInterim,
+    const session = await startOpenAIHoldToSpeak({
       onError: (message) => {
-        if (!holdingRef.current) return;
+        if (!holdingRef.current && !releasePendingRef.current) return;
         holdingRef.current = false;
+        releasePendingRef.current = false;
         sessionRef.current = null;
         setInterim("");
         setTalkPhase("idle");
         if (message === "not-allowed") {
           setMicError("Allow microphone in browser settings");
         } else if (message !== "aborted" && message !== "no-speech") {
-          setMicError("Mic error — try Chrome or Edge");
+          setMicError("Could not use microphone");
         }
       },
     });
 
+    if (holdStartId !== holdStartIdRef.current) {
+      session?.cancel();
+      return;
+    }
+
     if (!session) {
       holdingRef.current = false;
+      releasePendingRef.current = false;
       setTalkPhase("idle");
-      setMicError("Voice input needs Chrome or Edge");
+      setMicError("Voice input needs microphone access");
       return;
     }
 
     sessionRef.current = session;
-  }, [item.id, setTalkPhase, stopMic]);
+    if (releasePendingRef.current) {
+      void finishHold();
+    }
+  }, [finishHold, item.id, setTalkPhase, stopMic]);
 
   const startTapMic = useCallback(() => {
     setMicError("");
@@ -276,10 +391,10 @@ function TalkButton({
         return;
       }
       if (!supported) {
-        setMicError("Voice input needs Chrome or Edge");
+        setMicError("Voice input needs microphone access");
         return;
       }
-      if (phase === "thinking" || phase === "answering") return;
+      if (phase === "thinking") return;
 
       if (phase === "listening" && stopOpenMicRef.current) {
         stopMic();
@@ -325,11 +440,11 @@ function TalkButton({
 
   const label =
     phase === "listening"
-      ? "Release"
+      ? "Hold"
       : phase === "thinking"
-        ? "Thinking…"
+        ? "Hold"
         : phase === "answering"
-          ? "Speaking…"
+          ? "Hold"
           : lessonReady
             ? supported
               ? "Hold"
@@ -358,7 +473,11 @@ function TalkButton({
           )}
         >
           {phase === "listening" ? (
-            <div className="h-4 w-4 rounded-sm bg-pastel-ink" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <rect x="9" y="2" width="6" height="12" rx="3" />
+              <path d="M5 10a7 7 0 0 0 14 0" />
+              <path d="M12 19v3" />
+            </svg>
           ) : (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <rect x="9" y="2" width="6" height="12" rx="3" />
@@ -370,11 +489,6 @@ function TalkButton({
           {label}
         </span>
       </button>
-      {interim && phase === "listening" && (
-        <p className="max-w-[96px] truncate text-center text-[8px] text-white/80 [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
-          {interim}
-        </p>
-      )}
       {micError && (
         <p className="max-w-[104px] text-center text-[8px] font-medium text-pastel-peach [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
           {micError}
@@ -457,7 +571,7 @@ function PersonalityMedia({
   muted?: boolean;
   speechActive?: boolean;
   externalSpeaking?: boolean;
-  onVisibilityChange?: (id: string, visible: boolean) => void;
+  onVisibilityChange?: (id: string, visible: boolean, ratio?: number) => void;
   onPortraitBroken?: (id: string) => void;
 }) {
   const [isInView, setIsInView] = useState(!!priority);
@@ -526,7 +640,7 @@ function PersonalityMedia({
         const minRatio = priority ? 0.25 : 0.4;
         const visible = entry.isIntersecting && entry.intersectionRatio >= minRatio;
         setIsInView(visible);
-        onVisibilityChange?.(item.id, visible);
+        onVisibilityChange?.(item.id, visible, entry.intersectionRatio);
       },
       { threshold: [0, 0.25, 0.4, 0.55, 0.75, 1] }
     );
@@ -534,7 +648,7 @@ function PersonalityMedia({
     observer.observe(section);
     return () => {
       observer.disconnect();
-      onVisibilityChange?.(item.id, false);
+      onVisibilityChange?.(item.id, false, 0);
     };
   }, [containerRef, item.id, onVisibilityChange, priority]);
 
@@ -580,6 +694,9 @@ function PersonalityMedia({
     }
 
     if (muted || externalSpeaking || !speechActive) {
+      if (!speechActive) {
+        autoPlayedRef.current = null;
+      }
       setAutoSpeaking(false);
       return;
     }

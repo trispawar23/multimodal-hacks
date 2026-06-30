@@ -68,6 +68,7 @@ export default function FeedPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(() => getSavedIds());
   const [muted, setMuted] = useState(false);
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
+  const visibleRatiosRef = useRef<Map<string, number>>(new Map());
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
   const feedItemsRef = useRef(feedItems);
@@ -578,18 +579,28 @@ export default function FeedPage() {
   }, []);
 
   const handleReelVisibility = useCallback(
-    (id: string, visible: boolean) => {
+    (id: string, visible: boolean, ratio = 0) => {
       if (visible) {
-        visibleReelIdRef.current = id;
-        setActiveReelId(id);
+        visibleRatiosRef.current.set(id, ratio);
+        const [mostVisibleId] = [...visibleRatiosRef.current.entries()].sort(
+          (a, b) => b[1] - a[1]
+        )[0] ?? [id, ratio];
+        visibleReelIdRef.current = mostVisibleId;
+        setActiveReelId(mostVisibleId);
         const item = feedItemsRef.current.find((i) => i.id === id);
         if (item?.enrichPending) {
           hydrateWebReel(item);
         }
         scheduleLazyPortrait(id);
-      } else if (visibleReelIdRef.current === id) {
-        visibleReelIdRef.current = null;
-        setActiveReelId((current) => (current === id ? null : current));
+      } else {
+        visibleRatiosRef.current.delete(id);
+        if (visibleReelIdRef.current === id) {
+          const [nextVisibleId] = [...visibleRatiosRef.current.entries()].sort(
+            (a, b) => b[1] - a[1]
+          )[0] ?? [null, 0];
+          visibleReelIdRef.current = nextVisibleId;
+          setActiveReelId(nextVisibleId);
+        }
         stopAllCharacterSpeech(id);
         portraitFailuresRef.current.delete(id);
         attemptedPortraitRef.current.delete(id);
@@ -611,6 +622,7 @@ export default function FeedPage() {
       hydrateRetriesRef.current.clear();
       pendingConceptsRef.current = [];
       pendingCharactersRef.current = [];
+      visibleRatiosRef.current.clear();
 
       const preservedConcepts = loadSessionConcepts();
       const preservedHistory = feedRecentRef.current.topicCharacterHistory;

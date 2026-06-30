@@ -1,11 +1,13 @@
 import type { AICharacter } from "./types";
 import { spokenLessonText, speakAsCharacter, stopCharacterSpeech } from "./character-voice";
 import { playGeminiVoice, stopGeminiVoice } from "./gemini-voice-client";
+import { stopOpenAIConversationVoice } from "./openai-voice-client";
 import type { GradeLevel } from "./types";
 
 export function stopAllCharacterSpeech(speechOwner?: string): void {
   stopCharacterSpeech(speechOwner);
   stopGeminiVoice();
+  stopOpenAIConversationVoice();
 }
 
 /** Browser speech by default; set NEXT_PUBLIC_USE_GEMINI_TTS=true to opt into Gemini TTS. */
