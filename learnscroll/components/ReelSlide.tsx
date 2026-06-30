@@ -5,7 +5,7 @@ import type { ContentItem, PortraitStyle } from "@/lib/types";
 import { topicPastels } from "@/lib/tokens";
 import { onFeedSpeechUnlock, unlockFeedSpeech } from "@/lib/feed-audio";
 import { playCharacterVoice, stopAllCharacterSpeech } from "@/lib/voice-playback";
-import { isOpenAIHoldToSpeakSupported, listenForSpeech, startOpenAIHoldToSpeak, type HoldToSpeakSession, type RecordedSpeech } from "@/lib/speech-input";
+import { isOpenAIHoldToSpeakSupported, startOpenAIHoldToSpeak, type HoldToSpeakSession, type RecordedSpeech } from "@/lib/speech-input";
 import { PortraitLoadingOverlay } from "./PortraitLoadingOverlay";
 import { isPortraitUrlForCharacter } from "@/lib/portrait-validation";
 import { cn } from "./ui/cn";
@@ -65,7 +65,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-1"
+      className="flex h-[60px] w-[58px] flex-col items-center justify-start gap-1"
       aria-label={label}
     >
       <div
@@ -97,7 +97,6 @@ function TalkButton({
   const [, setInterim] = useState("");
   const [micError, setMicError] = useState("");
   const sessionRef = useRef<HoldToSpeakSession | null>(null);
-  const stopOpenMicRef = useRef<(() => void) | null>(null);
   const historyRef = useRef<{ role: "user" | "character"; text: string }[]>([]);
   const holdingRef = useRef(false);
   const releasePendingRef = useRef(false);
@@ -117,8 +116,6 @@ function TalkButton({
   );
 
   const stopMic = useCallback(() => {
-    stopOpenMicRef.current?.();
-    stopOpenMicRef.current = null;
     sessionRef.current?.cancel();
     sessionRef.current = null;
     holdingRef.current = false;
@@ -352,35 +349,6 @@ function TalkButton({
     }
   }, [finishHold, item.id, setTalkPhase, stopMic]);
 
-  const startTapMic = useCallback(() => {
-    setMicError("");
-    unlockFeedSpeech();
-    stopAllCharacterSpeech(item.id);
-    stopMic();
-
-    setTalkPhase("listening");
-    stopOpenMicRef.current = listenForSpeech({
-      onInterim: setInterim,
-      onFinal: (text) => {
-        setInterim("");
-        void sendQuestion(text);
-      },
-      onError: (message) => {
-        setInterim("");
-        setTalkPhase("idle");
-        if (message === "not-allowed") {
-          setMicError("Allow microphone in browser settings");
-        } else if (message !== "aborted") {
-          setMicError("Mic unavailable — tap and hold instead");
-        }
-      },
-      onEnd: () => {
-        stopOpenMicRef.current = null;
-        if (phaseRef.current === "listening") setTalkPhase("idle");
-      },
-    });
-  }, [item.id, sendQuestion, setTalkPhase, stopMic]);
-
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       e.preventDefault();
@@ -396,16 +364,10 @@ function TalkButton({
       }
       if (phase === "thinking") return;
 
-      if (phase === "listening" && stopOpenMicRef.current) {
-        stopMic();
-        setTalkPhase("idle");
-        return;
-      }
-
       e.currentTarget.setPointerCapture(e.pointerId);
       startHold();
     },
-    [lessonReady, phase, setTalkPhase, startHold, stopMic, supported]
+    [lessonReady, phase, startHold, supported]
   );
 
   const handlePointerUp = useCallback(
@@ -451,22 +413,24 @@ function TalkButton({
               : "N/A"
             : "…";
 
+  const helperText = micError;
+
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex h-[78px] w-[72px] flex-col items-center justify-start gap-1">
       <button
         type="button"
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onContextMenu={(e) => e.preventDefault()}
-        className="flex flex-col items-center gap-1 select-none"
+        className="flex h-[60px] w-[58px] flex-col items-center justify-start gap-1 select-none"
         style={{ touchAction: "none" }}
         aria-label="Hold to speak with teacher"
         aria-pressed={phase === "listening"}
       >
         <div
           className={cn(
-            "flex h-11 w-11 items-center justify-center rounded-full transition-all bg-pastel-lilac text-pastel-ink",
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all bg-pastel-lilac text-pastel-ink",
             phase === "listening" && "scale-110 bg-pastel-peach ring-2 ring-white/80",
             phase === "thinking" && "opacity-70",
             (!supported || !lessonReady) && phase === "idle" && "opacity-40"
@@ -489,23 +453,11 @@ function TalkButton({
           {label}
         </span>
       </button>
-      {micError && (
-        <p className="max-w-[104px] text-center text-[8px] font-medium text-pastel-peach [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
-          {micError}
+      <div className="h-[14px] w-[72px] text-center">
+        <p className="truncate text-[8px] font-medium text-pastel-peach [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+          {helperText}
         </p>
-      )}
-      {supported && lessonReady && phase === "idle" && !micError && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            startTapMic();
-          }}
-          className="text-[8px] font-medium text-white/70 underline [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]"
-        >
-          or tap to talk
-        </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -942,7 +894,7 @@ export function ReelSlide({
       </div>
 
       <div
-        className="absolute bottom-[6.5rem] right-3 z-20 flex flex-col items-center gap-4"
+        className="absolute bottom-[max(6.25rem,calc(env(safe-area-inset-bottom)+5.75rem))] right-[max(0.75rem,env(safe-area-inset-right))] z-20 flex w-[72px] flex-col items-center gap-3 sm:gap-4"
         style={{ touchAction: "manipulation" }}
       >
         <ActionButton
@@ -978,9 +930,9 @@ export function ReelSlide({
         <button
           type="button"
           onClick={onQuiz}
-          className="flex flex-col items-center gap-1"
+          className="flex h-[60px] w-[58px] flex-col items-center justify-start gap-1"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/85 text-pastel-ink backdrop-blur-sm">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/85 text-pastel-ink backdrop-blur-sm">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <circle cx="12" cy="12" r="10" />
               <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
